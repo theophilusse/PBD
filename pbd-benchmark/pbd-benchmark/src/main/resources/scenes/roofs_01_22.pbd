@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=roofs_01 xy=6x2
+# asset=roofs_01_22
+# property OpaquePixelsOnly=true
+
+cube shape1 {
+  pos   = (0.00000, 0.00500000, 0.00000)
+  scale = (1.00000, 0.0100000, 1.00000)
+  mat   = default
+}
+

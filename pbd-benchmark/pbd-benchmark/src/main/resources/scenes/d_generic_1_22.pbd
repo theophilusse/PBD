@@ -1,0 +1,24 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_generic_1 xy=6x2
+# asset=d_generic_1_22
+
+cube shape1 {
+  pos   = (0.243600, 0.114100, -0.0935000)
+  scale = (0.342800, 0.228200, 0.353800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0812000, 0.0488500, 0.354400)
+  scale = (0.153600, 0.0977000, 0.137600)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (-0.157950, 0.00000, 0.345000)
+  scale = (0.607500, 1, 0.612400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 6-point polygon, not its exact silhouette - see console output at conversion time
+}
+

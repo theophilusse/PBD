@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_machinery_01 xy=7x0
+# asset=location_business_machinery_01_7
+
+plane shape1 {
+  pos   = (0.00780000, 0.00000, -0.00780000)
+  scale = (1.00000, 1, 1.00000)
+  mat   = default
+}
+

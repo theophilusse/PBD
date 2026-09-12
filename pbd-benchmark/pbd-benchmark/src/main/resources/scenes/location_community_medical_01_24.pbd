@@ -1,0 +1,24 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=0x3
+# asset=location_community_medical_01_24
+
+cube shape1 {
+  pos   = (-0.0220000, 1.47980, 0.00000)
+  scale = (0.107400, 0.927000, 0.525000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 0.0611500, 0.00000)
+  scale = (1.00000, 0.122300, 1.00000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.00000, 1.07160, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0400000, 1.73530, 0.0400000)
+  mat   = default
+}
+

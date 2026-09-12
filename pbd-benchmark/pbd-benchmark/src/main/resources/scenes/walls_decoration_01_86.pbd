@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_decoration_01 xy=6x10
+# asset=walls_decoration_01_86
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 2.09975, 0.00000)
+  scale = (1.00000, 0.699500, 1.00000)
+  mat   = default
+}
+

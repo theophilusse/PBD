@@ -1,0 +1,76 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_seating_outdoor_01 xy=2x2
+# asset=furniture_seating_outdoor_01_18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.000200000, 0.365850, 0.0450000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.512200, 0.119900, 0.552800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.271200, 0.283850, -0.204200)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0590000, 0.567700, 0.0498000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.217600, 0.167400, 0.218600)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0598000, 0.334800, 0.0652000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.219900, 0.225700, 0.265300)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0468000, 0.451400, 0.0474000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.109800, 0.617300, 0.248000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0296000, 0.383800, 0.0622000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (0.116600, 0.619300, 0.193900)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0296000, 0.387800, 0.0622000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-0.257900, 0.618350, 0.0401000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.482200, 0.313700, 0.0474000)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (-0.0122000, 0.855150, 0.249600)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0614000, 0.182900, 0.536200)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (0.0295000, 0.617300, 0.247900)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0296000, 0.383800, 0.0930000)
+  mat   = default
+}
+
+plane shape10 {
+  pos   = (0.170000, 0.553300, 0.0748000)
+  scale = (0.562200, 1, 0.420800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 20-point polygon, not its exact silhouette - see console output at conversion time
+}
+

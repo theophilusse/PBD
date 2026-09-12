@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_seating_indoor_03 xy=6x10
+# asset=furniture_seating_indoor_03_86
+# property Surface=18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.384300, 0.0443000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.691200, 0.267800, 0.844600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.417300, 0.624200, 0.0457000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.691200, 0.210600, 0.144600)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (0.173900, 0.738400, 0.490300)
+  scale = (0.851400, 1, 0.375000)
+  mat   = default
+  # APPROXIMATION: bounding box of a 15-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (-0.0631000, 0.518100, 0.565450)
+  scale = (0.875800, 1, 0.369900)
+  mat   = default
+  # APPROXIMATION: bounding box of a 11-point polygon, not its exact silhouette - see console output at conversion time
+}
+

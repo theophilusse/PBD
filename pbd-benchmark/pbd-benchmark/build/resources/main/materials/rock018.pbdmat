@@ -1,0 +1,8 @@
+material rock018 {
+  color     = (0.7, 0.7, 0.7)
+  shininess = 8
+  specular  = 0.1
+  texture   = rock018.png
+  normalMap = rock018_normalgl.png
+  roughnessMap = rock018_roughness.png
+}

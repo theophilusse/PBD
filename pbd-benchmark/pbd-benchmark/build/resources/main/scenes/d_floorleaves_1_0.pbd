@@ -1,0 +1,23 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_floorleaves_1 xy=0x0
+# asset=d_floorleaves_1_0
+
+cube shape1 {
+  pos   = (-0.445000, 0.100000, 0.0250000)
+  scale = (0.0100000, 0.200000, 0.950000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0300000, 0.100000, -0.445000)
+  scale = (0.940000, 0.200000, 0.0100000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0300000, 0.0150000, 0.0300000)
+  scale = (0.940000, 0.0300000, 0.940000)
+  mat   = default
+}
+

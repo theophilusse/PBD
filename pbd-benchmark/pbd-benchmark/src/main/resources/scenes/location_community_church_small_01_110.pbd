@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_church_small_01 xy=6x13
+# asset=location_community_church_small_01_110
+
+cube shape1 {
+  pos   = (-0.420500, 2.22695, 0.0360000)
+  scale = (0.0652000, 0.215100, 1.07200)
+  mat   = default
+}
+

@@ -1,0 +1,51 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_generic_01 xy=1x0
+# asset=location_restaurant_generic_01_1
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.419500, 0.475250, 1.11800)
+  scale = (1.93400, 0.104300, 0.367400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.393500, 0.475250, -0.254100)
+  scale = (1.93400, 0.104300, 0.393800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.419600, 0.801300, 0.457000)
+  scale = (1.93400, 0.0952000, 0.918000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.0500000, 0.0100000, 0.0500000)
+  scale = (1.10000, 0.0200000, 1.10000)
+  mat   = default
+}
+
+plane shape5 {
+  pos   = (1.42705, 0.00000, 0.835650)
+  scale = (1.62490, 1, 0.810100)
+  mat   = default
+  # APPROXIMATION: bounding box of a 24-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape6 {
+  pos   = (-0.584650, 0.00000, 0.836400)
+  scale = (1.26550, 1, 0.746200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 17-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape7 {
+  pos   = (1.17660, 0.475900, 0.537600)
+  scale = (0.296800, 1, 0.656200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 8-point polygon, not its exact silhouette - see console output at conversion time
+}
+

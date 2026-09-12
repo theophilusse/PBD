@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=roofs_01 xy=2x10
+# asset=roofs_01_82
+# property OpaquePixelsOnly=true
+
+plane shape1 {
+  pos   = (-0.474150, 0.535800, 0.501750)
+  scale = (1.19730, 1, 1.28810)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

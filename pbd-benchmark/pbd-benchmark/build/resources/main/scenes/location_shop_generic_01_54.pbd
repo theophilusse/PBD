@@ -1,0 +1,40 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_generic_01 xy=6x6
+# asset=location_shop_generic_01_54
+
+cube shape1 {
+  pos   = (0.00000, 1.22470, -0.415900)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0728000, 2.44940, 1.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.0368000, 0.936000, -0.172600)
+  rot   = (-75.96, -89.98, -75.96)
+  scale = (0.0700000, 1.07670, 0.0700000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.0152000, 1.78580, -0.172600)
+  rot   = (-75.96, -89.98, -75.96)
+  scale = (0.0700000, 1.07670, 0.0700000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.0721000, 0.936000, -0.297700)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.0700000, 0.251200, 0.0700000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.0517000, 1.78760, -0.297700)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.0700000, 0.251200, 0.0700000)
+  mat   = default
+}
+

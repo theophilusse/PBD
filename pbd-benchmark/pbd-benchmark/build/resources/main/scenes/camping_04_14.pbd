@@ -1,0 +1,34 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=camping_04 xy=6x1
+# asset=camping_04_14
+# property Translucent=true
+
+plane shape1 {
+  pos   = (0.575550, 0.412700, 1.18270)
+  scale = (2.01370, 1, 1.42500)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape2 {
+  pos   = (0.746050, 0.00000, -0.139900)
+  scale = (1.66350, 1, 1.45320)
+  mat   = default
+  # APPROXIMATION: bounding box of a 6-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape3 {
+  pos   = (-0.0731000, 0.00000, 2.51005)
+  scale = (1.22640, 1, 1.33830)
+  mat   = default
+  # APPROXIMATION: bounding box of a 7-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (-0.548500, 0.00900000, 2.83420)
+  scale = (1.91560, 1, 1.37120)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

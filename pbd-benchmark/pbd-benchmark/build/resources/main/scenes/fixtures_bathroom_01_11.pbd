@@ -1,0 +1,27 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_bathroom_01 xy=3x1
+# asset=fixtures_bathroom_01_11
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.401600, 0.988350, 0.0517000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.566000, 0.780100, 0.194200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.443200, 1.58275, 0.0632000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.260200, 0.411100, 0.113800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.249400, 0.428050, 0.0480000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.546400, 0.344100, 0.501600)
+  mat   = default
+}
+

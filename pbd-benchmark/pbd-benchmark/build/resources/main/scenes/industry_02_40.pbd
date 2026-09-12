@@ -1,0 +1,33 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=0x5
+# asset=industry_02_40
+
+cube shape1 {
+  pos   = (-0.0150000, 0.747900, -0.00430000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.754400, 0.191800, 1.05880)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.396600, 0.330950, -0.320900)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0598000, 0.661900, 0.0952000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.398400, 0.330950, 0.336100)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0624000, 0.661900, 0.0954000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.389000, 0.182450, -0.00120000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.705800, 0.0391000, 0.111200)
+  mat   = default
+}
+

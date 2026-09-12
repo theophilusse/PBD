@@ -1,0 +1,34 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_bedding_01 xy=0x7
+# asset=furniture_bedding_01_56
+# property Surface=25
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00960000, 0.593350, -0.504400)
+  scale = (0.909400, 0.0511000, 1.99460)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.0700000, 0.00000, 0.867800)
+  scale = (1.06240, 1, 0.778200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 15-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape3 {
+  pos   = (0.0700000, 0.00000, -0.176400)
+  scale = (1.06240, 1, 0.778200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 15-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (0.0700000, 0.00000, -1.03110)
+  scale = (1.06240, 1, 0.778200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 15-point polygon, not its exact silhouette - see console output at conversion time
+}
+

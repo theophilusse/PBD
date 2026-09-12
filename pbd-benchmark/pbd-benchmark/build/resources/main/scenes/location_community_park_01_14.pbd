@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_park_01 xy=6x1
+# asset=location_community_park_01_14
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.471000, 1.11295, 0.471900)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0420000, 0.0593000, 0.358600)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.284700, 1.17730, 0.425700)
+  rot   = (-90.00, -16.14, 90.00)
+  scale = (0.126000, 2.44950, 0.126000)
+  mat   = default
+}
+

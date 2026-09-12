@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_01 xy=0x1
+# asset=constructedobjects_01_8
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0373000, 0.189650, 0.0188000)
+  scale = (0.442600, 0.379300, 0.846200)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.0631000, 0.380000, 0.601300)
+  scale = (0.495800, 1, 0.328800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

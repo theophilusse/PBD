@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=0x4
+# asset=industry_02_32
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.0480000, 0.110000, 0.0295000)
+  scale = (0.220000, 1.00810, 0.220000)
+  mat   = default
+}
+

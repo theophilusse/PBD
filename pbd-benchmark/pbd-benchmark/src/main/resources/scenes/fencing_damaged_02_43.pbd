@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fencing_damaged_02 xy=3x5
+# asset=fencing_damaged_02_43
+# property Translucent=true
+
+plane shape1 {
+  pos   = (-0.382800, 0.502300, 0.152400)
+  scale = (1.04680, 1, 2.18780)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

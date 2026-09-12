@@ -1,0 +1,32 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_04 xy=4x13
+# asset=crafted_04_108
+
+cube shape1 {
+  pos   = (0.471800, 0.321400, -0.0336000)
+  scale = (1.87980, 0.0866000, 0.752400)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.0899000, 0.140400, 0.316400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.132000, 0.280900, 0.132000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (1.27730, 0.140400, 0.316400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.146000, 0.280900, 0.146000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (1.27730, 0.140400, -0.181900)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.146000, 0.280900, 0.146000)
+  mat   = default
+}
+

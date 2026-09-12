@@ -1,0 +1,7 @@
+material glass {
+  color     = (0.1618, 0.2603, 0.2898)
+  shininess = 5
+  specular  = 1
+  reflectivity = 1
+  transparency = 0.25
+}

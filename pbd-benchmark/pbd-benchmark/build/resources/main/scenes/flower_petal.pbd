@@ -1,0 +1,21 @@
+# Flower petal: a flattened ellipsoid (sphere + non-uniform scale), then
+# bent via two modifiers. `bend` is implemented on the GPU side; `curve`
+# is still a no-op in the TES (curve deformation is future work, see
+# README) but is already accepted by the parser and the modifier registry.
+
+pbd_version 1
+
+sphere petal01 {
+  pos   = (0, 0, 0)
+  scale = (0.3, 0.15, 0.6)  # flattened on Y, elongated on Z: petal silhouette
+  mat   = petal
+
+  modifier bend  { axis=x angle=40 }             # main curvature
+  modifier curve { ref=petal_curve01 axis=y }    # follows the curve below (not active on GPU yet)
+}
+
+# Named curve, reusable by several petals if needed.
+curve petal_curve01 {
+  kind   = bezier
+  points = [(0,0,0), (0,0.4,0.1), (0,0.8,0.4)]
+}

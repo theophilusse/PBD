@@ -1,0 +1,48 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_com_01 xy=4x8
+# asset=appliances_com_01_68
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0129000, 0.211950, -0.0129000)
+  rot   = (-89.97, 0.000, 0.000)
+  scale = (0.171000, 0.349100, 0.0754000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0129000, 0.261650, -0.0129000)
+  rot   = (-89.97, 0.000, -122.3)
+  scale = (0.171000, 0.448500, 0.0754000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0129000, 0.211950, -0.0129000)
+  rot   = (-89.97, 0.000, 113.3)
+  scale = (0.171000, 0.349100, 0.0754000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.00000, 0.762400, -0.0202000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0468000, 1.52470, 0.0468000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (0.00000, 1.51940, -0.0995000)
+  rot   = (-162.6, 0.000, 0.000)
+  scale = (0.169000, 0.295400, 0.169000)
+  mat   = default
+}
+
+plane shape6 {
+  pos   = (-0.00780000, 0.00000, 1.19605)
+  scale = (0.265600, 1, 0.631500)
+  mat   = default
+  # APPROXIMATION: bounding box of a 5-point polygon, not its exact silhouette - see console output at conversion time
+}
+

@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_sinks_01 xy=1x3
+# asset=fixtures_sinks_01_25
+
+cube shape1 {
+  pos   = (-0.414200, 0.816650, -0.0424000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.599400, 0.563700, 0.106800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0883000, 0.715450, -0.0193000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.552800, 0.211300, 0.640800)
+  mat   = default
+}
+

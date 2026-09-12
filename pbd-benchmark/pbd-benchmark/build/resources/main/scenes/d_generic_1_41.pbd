@@ -1,0 +1,30 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_generic_1 xy=1x5
+# asset=d_generic_1_41
+
+cube shape1 {
+  pos   = (0.231700, 0.0688500, -0.320900)
+  scale = (0.240000, 0.137700, 0.207000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (-0.0144500, 0.00000, 0.373550)
+  scale = (0.132500, 1, 0.153100)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (0.451350, 0.00930000, 0.477300)
+  scale = (0.144900, 1, 0.156200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (0.470850, 0.00930000, -0.340550)
+  scale = (0.0661000, 1, 0.0511000)
+  mat   = default
+}
+

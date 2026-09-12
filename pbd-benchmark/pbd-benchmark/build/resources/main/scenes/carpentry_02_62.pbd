@@ -1,0 +1,60 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=carpentry_02 xy=6x7
+# asset=carpentry_02_62
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0488000, 0.0448500, 0.0439000)
+  scale = (0.837800, 0.0897000, 0.230000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0610000, 1.31755, 0.0624000)
+  scale = (0.0996000, 2.45570, 0.0946000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.353900, 0.381500, 0.0624000)
+  rot   = (0.000, 0.000, 26.43)
+  scale = (0.0996000, 0.642600, 0.0800000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.208200, 0.387350, 0.0624000)
+  rot   = (0.000, 0.000, -24.14)
+  scale = (0.0996000, 0.662100, 0.0800000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (0.0352000, 2.33870, 0.152000)
+  rot   = (90.00, 71.82, 180.0)
+  scale = (0.135600, 0.319400, 0.135600)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.178000, 2.29280, 0.151600)
+  rot   = (90.00, 71.12, -180.0)
+  scale = (0.185600, 0.0615000, 0.185600)
+  mat   = default
+}
+
+plane shape7 {
+  pos   = (0.000400000, 0.00000, 2.44475)
+  scale = (0.0312000, 1, 0.331700)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape8 {
+  pos   = (0.117150, 0.00000, 2.38410)
+  scale = (0.0469000, 1, 0.159400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

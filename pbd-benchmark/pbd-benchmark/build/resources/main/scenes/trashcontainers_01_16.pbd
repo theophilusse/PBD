@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=trashcontainers_01 xy=0x2
+# asset=trashcontainers_01_16
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.0903000, 0.425000, 0.0892000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.700000, 0.850000, 0.700000)
+  mat   = default
+}
+

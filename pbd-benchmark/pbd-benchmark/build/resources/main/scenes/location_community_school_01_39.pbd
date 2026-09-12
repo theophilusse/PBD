@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_school_01 xy=7x4
+# asset=location_community_school_01_39
+# property ItemHeight=54
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.311900, 1.28770, 0.000200000)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.375800, 0.117200, 1.00020)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.431500, 1.04135, -0.338000)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.134800, 0.377100, 0.0468000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.432700, 1.04135, -0.0254000)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.134800, 0.377100, 0.0468000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.432700, 1.04015, 0.288600)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.134800, 0.377100, 0.0468000)
+  mat   = default
+}
+

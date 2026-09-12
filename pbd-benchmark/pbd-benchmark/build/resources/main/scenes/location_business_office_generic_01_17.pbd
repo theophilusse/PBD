@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_office_generic_01 xy=1x2
+# asset=location_business_office_generic_01_17
+# property ItemHeight=51
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.650000, 0.00000)
+  scale = (0.800000, 1.30000, 0.600000)
+  mat   = default
+}
+

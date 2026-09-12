@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=lighting_indoor_01 xy=0x4
+# asset=lighting_indoor_01_32
+
+cylinder shape1 {
+  pos   = (-0.0307000, 1.39990, -0.202500)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.500000, 1.00000, 0.500000)
+  mat   = default
+}
+

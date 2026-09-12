@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_bar_01 xy=3x2
+# asset=location_restaurant_bar_01_19
+# property Surface=47
+
+cube shape1 {
+  pos   = (-0.150000, 0.600000, 0.00000)
+  scale = (0.600000, 1.20000, 1.00000)
+  mat   = default
+}
+

@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=seating_01 xy=4x0
+# asset=seating_01_4
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00660000, 0.783300, -0.458400)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.35800, 0.634200, 0.697200)
+  mat   = default
+}
+

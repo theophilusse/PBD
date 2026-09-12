@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_police_01 xy=0x13
+# asset=location_community_police_01_104
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0500000, 1.22475, -0.0100000)
+  scale = (0.100000, 2.44950, 1.02000)
+  mat   = default
+}
+

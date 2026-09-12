@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=street_decoration_01 xy=0x3
+# asset=street_decoration_01_24
+
+cylinder shape1 {
+  pos   = (0.0177000, 0.0100000, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.300000, 0.0200000, 0.300000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.0177000, 0.0801000, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.120000, 0.120000, 0.120000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.0177000, 1.31520, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0760000, 2.35000, 0.0760000)
+  mat   = default
+}
+

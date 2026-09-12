@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_trucks_01 xy=2x3
+# asset=industry_trucks_01_26
+# property Translucent=true
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (-0.465000, 1.22475, -0.465000)
+  scale = (0.0700000, 2.44950, 0.0700000)
+  mat   = default
+}
+

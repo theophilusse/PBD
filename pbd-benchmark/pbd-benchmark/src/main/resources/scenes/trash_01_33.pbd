@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=trash_01 xy=1x4
+# asset=trash_01_33
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0572000, 0.0470500, 0.142800)
+  scale = (0.381000, 0.0941000, 0.391400)
+  mat   = default
+}
+

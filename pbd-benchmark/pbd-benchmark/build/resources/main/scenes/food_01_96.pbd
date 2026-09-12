@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=food_01 xy=0x12
+# asset=food_01_96
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.340000, 1.95000, 0.0350000)
+  scale = (0.320000, 0.500000, 0.970000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.340000, 1.30000, 0.0350000)
+  scale = (0.320000, 0.600000, 0.970000)
+  mat   = default
+}
+

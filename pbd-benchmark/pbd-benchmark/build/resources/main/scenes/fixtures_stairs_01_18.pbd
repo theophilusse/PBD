@@ -1,0 +1,29 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_stairs_01 xy=2x2
+# asset=fixtures_stairs_01_18
+
+cube shape1 {
+  pos   = (0.00780000, 0.918550, 0.00000)
+  scale = (1.00000, 1.83710, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.113100, 1.93915, 0.00000)
+  scale = (0.757800, 0.204100, 1.00000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.242100, 2.14325, 0.00000)
+  scale = (0.500000, 0.204100, 1.00000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.359200, 2.34735, 0.00000)
+  scale = (0.265600, 0.204100, 1.00000)
+  mat   = default
+}
+

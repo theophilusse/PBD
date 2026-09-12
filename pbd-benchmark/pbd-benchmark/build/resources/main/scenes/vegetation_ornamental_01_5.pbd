@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_ornamental_01 xy=5x0
+# asset=vegetation_ornamental_01_5
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.000500000, 0.491350, -0.0998000)
+  scale = (0.600600, 0.982700, 1.19980)
+  mat   = default
+}
+

@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=storage_01 xy=0x4
+# asset=storage_01_32
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.111800, 0.432550, 0.0312000)
+  scale = (0.556000, 0.865100, 0.921600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.168600, 1.03275, 0.0312000)
+  scale = (0.442400, 0.335300, 0.921600)
+  mat   = default
+}
+

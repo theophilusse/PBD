@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_machinery_01 xy=7x3
+# asset=location_business_machinery_01_31
+# property OpaquePixelsOnly=true
+
+cube shape1 {
+  pos   = (0.476600, 1.29115, 0.257700)
+  rot   = (-180.0, -0.01980, -180.0)
+  scale = (0.0468000, 0.780900, 1.08740)
+  mat   = default
+}
+

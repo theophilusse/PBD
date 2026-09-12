@@ -1,0 +1,84 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_stairs_01 xy=1x1
+# asset=fixtures_stairs_01_9
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00940000, 1.00425, 0.335100)
+  scale = (1.03460, 0.0789000, 0.313800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.00940000, 1.20975, 0.0844000)
+  scale = (1.03460, 0.0789000, 0.313800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.00940000, 1.41535, -0.167300)
+  scale = (1.03460, 0.0789000, 0.313800)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.00940000, 1.60815, -0.417700)
+  scale = (1.03460, 0.0789000, 0.313800)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.00940000, 1.80735, -0.669700)
+  scale = (1.03460, 0.0789000, 0.313800)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (-0.473500, 1.10340, 0.213300)
+  scale = (0.0226000, 0.102800, 0.0182000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-0.473500, 1.31410, -0.0373000)
+  scale = (0.0226000, 0.102800, 0.0182000)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (-0.473500, 1.52110, -0.286800)
+  scale = (0.0226000, 0.102800, 0.0182000)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (-0.476400, 1.70130, -0.539200)
+  scale = (0.0226000, 0.102800, 0.0182000)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (0.524300, 1.52785, -0.286800)
+  scale = (0.0226000, 0.132100, 0.0182000)
+  mat   = default
+}
+
+cube shape11 {
+  pos   = (0.509300, 1.31445, -0.0373000)
+  scale = (0.0226000, 0.130700, 0.0182000)
+  mat   = default
+}
+
+cube shape12 {
+  pos   = (0.509400, 1.11570, 0.213300)
+  scale = (0.0226000, 0.124200, 0.0182000)
+  mat   = default
+}
+
+cube shape13 {
+  pos   = (-0.495500, 0.0451500, -0.534400)
+  scale = (0.0226000, 0.241900, 0.0230000)
+  mat   = default
+}
+

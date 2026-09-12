@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=carpentry_02 xy=6x8
+# asset=carpentry_02_70
+# property Surface=57
+
+cube shape1 {
+  pos   = (0.330000, 1.40500, 0.00000)
+  scale = (0.340000, 0.0900000, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.330000, 1.18000, 0.00000)
+  scale = (0.340000, 0.360000, 1.00000)
+  mat   = default
+}
+

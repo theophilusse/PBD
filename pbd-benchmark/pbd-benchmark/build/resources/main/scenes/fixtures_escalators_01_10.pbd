@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_escalators_01 xy=2x1
+# asset=fixtures_escalators_01_10
+
+cube shape1 {
+  pos   = (-0.0392000, 1.64245, 0.289400)
+  scale = (1.00000, 0.312300, 0.313000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0390000, 1.90185, 0.0390000)
+  scale = (1.00000, 0.205900, 0.314600)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.0385000, 2.10270, -0.210600)
+  scale = (1.00000, 0.194400, 0.314200)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00780000, 2.29255, -0.644500)
+  scale = (1.00000, 0.214300, 0.784000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.00780000, 2.50695, -0.882600)
+  scale = (1.00000, 0.214300, 0.784000)
+  mat   = default
+}
+

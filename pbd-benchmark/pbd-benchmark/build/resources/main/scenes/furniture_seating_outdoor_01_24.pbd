@@ -1,0 +1,74 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_seating_outdoor_01 xy=0x3
+# asset=furniture_seating_outdoor_01_24
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.363700, 0.301750, -0.605900)
+  rot   = (29.14, 0.000, 0.000)
+  scale = (0.0610000, 0.0585000, 1.33360)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.276900, 0.301750, -0.605900)
+  rot   = (29.14, 0.000, 0.000)
+  scale = (0.0610000, 0.0585000, 1.33360)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.302300, 0.186950, -0.481800)
+  rot   = (-20.22, 0.000, 0.000)
+  scale = (0.0610000, 0.0585000, 1.18640)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.215300, 0.127850, -0.551800)
+  rot   = (-19.07, 0.000, 0.000)
+  scale = (0.0610000, 0.0585000, 1.19340)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.0458000, 0.0143500, -0.0139000)
+  scale = (0.670800, 0.0287000, 0.0260000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (-0.0458000, 0.0143500, -0.950200)
+  scale = (0.670800, 0.0287000, 0.0260000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (0.208300, 0.174300, -1.11050)
+  rot   = (29.29, 0.000, 0.000)
+  scale = (0.0356000, 0.530200, 0.0348000)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (-0.363400, 0.176700, -1.05840)
+  rot   = (29.29, 0.000, 0.000)
+  scale = (0.0356000, 0.530200, 0.0348000)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (-0.0392000, 0.457450, -0.836600)
+  rot   = (37.80, 0.000, 0.000)
+  scale = (0.668000, 0.0293000, 0.713000)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (-0.0392000, 0.291350, -0.266300)
+  rot   = (-11.82, 0.000, 0.000)
+  scale = (0.668000, 0.0293000, 0.713000)
+  mat   = default
+}
+

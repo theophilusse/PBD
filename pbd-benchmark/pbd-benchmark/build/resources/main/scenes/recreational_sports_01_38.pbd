@@ -1,0 +1,48 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_sports_01 xy=6x4
+# asset=recreational_sports_01_38
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0367000, 0.105000, -0.624100)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.67240, 0.129800, 0.785600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0465000, 1.28455, -1.10060)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.187200, 0.255900, 0.806000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.448100, 0.641150, -1.25150)
+  rot   = (0.1232, -89.98, -7.216)
+  scale = (0.0932000, 1.04550, 0.0318000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.373000, 0.642550, -1.26040)
+  rot   = (0.002600, -89.96, -8.014)
+  scale = (0.0932000, 1.04550, 0.0318000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.446900, 1.16830, -0.885000)
+  rot   = (-0.01970, 0.000, -90.00)
+  scale = (0.0772000, 0.525800, 0.0772000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.371700, 1.19860, -0.854500)
+  rot   = (-0.01970, 0.000, -90.00)
+  scale = (0.0772000, 0.525800, 0.0772000)
+  mat   = default
+}
+

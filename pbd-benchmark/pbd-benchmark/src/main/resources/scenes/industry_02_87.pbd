@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=7x10
+# asset=industry_02_87
+
+cylinder shape1 {
+  pos   = (-2.27330, 1.22470, 0.723000)
+  rot   = (-90.00, 0.000, -45.00)
+  scale = (5.51000, 2.44940, 5.51000)
+  mat   = default
+}
+

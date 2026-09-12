@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_05 xy=3x2
+# asset=crafted_05_19
+# property ItemHeight=77
+
+cube shape1 {
+  pos   = (0.00000, 0.981350, 0.271400)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.455000, 1.96270, 1.00000)
+  mat   = default
+}
+

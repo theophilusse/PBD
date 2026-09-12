@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pileocrepe_01 xy=0x2
+# asset=location_restaurant_pileocrepe_01_16
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.150000, 1.00000, -0.350000)
+  scale = (1.30000, 2.00000, 0.200000)
+  mat   = default
+}
+

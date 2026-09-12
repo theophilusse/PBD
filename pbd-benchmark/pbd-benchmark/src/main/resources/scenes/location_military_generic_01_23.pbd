@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_military_generic_01 xy=7x2
+# asset=location_military_generic_01_23
+# property ItemHeight=82
+
+cube shape1 {
+  pos   = (-0.213400, 1.03805, 0.00000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.957200, 2.07610, 0.418400)
+  mat   = default
+}
+

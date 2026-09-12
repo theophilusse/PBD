@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_spiffos_02 xy=6x4
+# asset=location_restaurant_spiffos_02_38
+
+cube shape1 {
+  pos   = (0.456500, 0.843850, -0.0192000)
+  scale = (1.84080, 0.142500, 1.02280)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.404900, 0.383600, -0.00780000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.122800, 0.767300, 0.122800)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.479400, 0.0326000, 0.0630000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.250600, 0.0653000, 0.250600)
+  mat   = default
+}
+

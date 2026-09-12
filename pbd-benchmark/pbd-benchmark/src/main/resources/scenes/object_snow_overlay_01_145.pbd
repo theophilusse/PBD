@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=object_snow_overlay_01 xy=1x18
+# asset=object_snow_overlay_01_145
+# property Translucent=true
+
+plane shape1 {
+  pos   = (0.0664500, 0.00000, 0.694200)
+  scale = (0.718100, 1, 1.36500)
+  mat   = default
+  # APPROXIMATION: bounding box of a 8-point polygon, not its exact silhouette - see console output at conversion time
+}
+

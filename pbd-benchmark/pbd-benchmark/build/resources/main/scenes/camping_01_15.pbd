@@ -1,0 +1,76 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=camping_01 xy=7x1
+# asset=camping_01_15
+# property ItemHeight=36
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.616500, 0.870550, 0.498200)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.91320, 0.0807000, 0.898400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.116800, 0.539650, 0.536400)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.99920, 0.0807000, 0.328000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (1.25360, 0.539650, 0.528000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.97700, 0.0807000, 0.362000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.555600, 0.773850, 1.34900)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.133200, 0.112900, 0.873600)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.589800, 0.444550, -0.419900)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0560000, 0.171700, 1.63700)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (0.594700, 0.428600, 1.33740)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0560000, 0.139800, 1.63700)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-0.204500, 0.399350, 1.38120)
+  rot   = (-90.00, -58.12, -90.00)
+  scale = (0.0686000, 0.879900, 0.155800)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (1.14590, 0.454000, 1.38120)
+  rot   = (89.93, -75.00, 89.92)
+  scale = (0.0686000, 0.908000, 0.155800)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (1.14530, 0.454000, -0.356200)
+  rot   = (89.93, -75.00, 89.92)
+  scale = (0.0686000, 0.908000, 0.155800)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (0.150000, 0.0100000, 0.150000)
+  scale = (1.30000, 0.0200000, 1.30000)
+  mat   = default
+}
+

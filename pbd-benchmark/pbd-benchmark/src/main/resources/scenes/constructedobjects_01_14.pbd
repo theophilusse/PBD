@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_01 xy=6x1
+# asset=constructedobjects_01_14
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.0887000, 0.248100, 0.103900)
+  rot   = (179.9, 0.000, 0.000)
+  scale = (0.495600, 0.663000, 0.495600)
+  mat   = default
+}
+

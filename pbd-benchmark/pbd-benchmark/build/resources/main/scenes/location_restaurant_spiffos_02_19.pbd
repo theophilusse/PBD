@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_spiffos_02 xy=3x2
+# asset=location_restaurant_spiffos_02_19
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0935000, 0.214500, 0.505500)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.745400, 0.429000, 1.65040)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.349400, 0.837800, 0.505300)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.234200, 0.816400, 1.65040)
+  mat   = default
+}
+

@@ -1,0 +1,29 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_exterior_house_01 xy=3x1
+# asset=walls_exterior_house_01_11
+
+cube shape1 {
+  pos   = (0.452500, 1.22475, -0.476700)
+  scale = (0.0950000, 2.44950, 0.0466000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.446400, 1.22475, -0.476700)
+  scale = (0.107200, 2.44950, 0.0466000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00000, 2.20625, -0.476700)
+  scale = (1.00000, 0.486500, 0.0466000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00000, 2.48000, -0.475000)
+  scale = (1.00000, 1.04000, 0.0500000)
+  mat   = default
+}
+

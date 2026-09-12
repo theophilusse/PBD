@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fencing_01 xy=2x10
+# asset=fencing_01_82
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.396600, 1.22470, -0.0107000)
+  scale = (0.0634000, 2.44940, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.363300, 0.0715000, 0.442700)
+  scale = (0.205000, 0.143000, 0.126800)
+  mat   = default
+}
+

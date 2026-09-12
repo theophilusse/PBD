@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pizzawhirled_01 xy=0x5
+# asset=location_restaurant_pizzawhirled_01_40
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0419000, 0.224850, -0.490700)
+  scale = (0.759400, 0.449700, 1.63520)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.312900, 0.849900, -0.490700)
+  scale = (0.217400, 0.798000, 1.63520)
+  mat   = default
+}
+

@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=floors_burnt_01 xy=1x0
+# asset=floors_burnt_01_1
+
+cube shape1 {
+  pos   = (0.0328000, 0.0750000, 0.0172000)
+  scale = (0.950000, 0.150000, 0.950000)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=rooftop_furniture xy=1x0
+# asset=rooftop_furniture_1
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00750000, 0.650000, -0.00750000)
+  scale = (0.985000, 1.30000, 0.985000)
+  mat   = default
+}
+

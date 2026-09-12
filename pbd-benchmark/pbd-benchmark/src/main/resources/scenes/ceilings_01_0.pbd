@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=ceilings_01 xy=0x0
+# asset=ceilings_01_0
+
+plane shape1 {
+  pos   = (0.00000, 0.00000, 0.00000)
+  scale = (1.00000, 1, 1.00000)
+  mat   = default
+}
+

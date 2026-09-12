@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_sinks_01 xy=6x1
+# asset=fixtures_sinks_01_14
+# property Surface=37
+
+cube shape1 {
+  pos   = (0.0129000, 0.463150, -0.272700)
+  scale = (0.773000, 0.926300, 0.469800)
+  mat   = default
+}
+

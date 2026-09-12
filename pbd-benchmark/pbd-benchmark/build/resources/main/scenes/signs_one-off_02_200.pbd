@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=signs_one-off_02 xy=0x25
+# asset=signs_one-off_02_200
+
+cube shape1 {
+  pos   = (-0.413700, 1.22470, 0.00000)
+  scale = (0.0782000, 2.44940, 1.00000)
+  mat   = default
+}
+

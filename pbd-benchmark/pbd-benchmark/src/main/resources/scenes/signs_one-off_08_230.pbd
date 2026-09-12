@@ -1,0 +1,33 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=signs_one-off_08 xy=6x28
+# asset=signs_one-off_08_230
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0500000, 2.07500, 0.500000)
+  scale = (0.100000, 0.850000, 1.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.0502000, 0.0500000, -0.0497000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.360000, 0.100000, 0.360000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.0502000, 1.42490, -0.0497000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.140000, 2.44950, 0.140000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.0502000, 0.151300, -0.0497000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.140000, 0.100000, 0.140000)
+  mat   = default
+}
+

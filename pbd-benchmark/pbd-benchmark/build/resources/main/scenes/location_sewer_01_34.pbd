@@ -1,0 +1,53 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_sewer_01 xy=2x4
+# asset=location_sewer_01_34
+
+cube shape1 {
+  pos   = (-0.267100, 1.26415, -0.170800)
+  scale = (0.164000, 0.161300, 0.207200)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.265400, 0.585000, 0.202600)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.130000, 1.17000, 0.130000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.265400, 2.37130, 0.202600)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.177600, 0.0958000, 0.177600)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.265800, 0.591700, -0.283700)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.113200, 1.18350, 0.113200)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.265400, 1.96380, 0.202600)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.130000, 0.710200, 0.130000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (-0.265400, 1.38980, 0.202600)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.178400, 0.439900, 0.178400)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (-0.265400, 1.26650, 0.0392000)
+  rot   = (-180.0, 0.000, 0.000)
+  scale = (0.158400, 0.214000, 0.158400)
+  mat   = default
+}
+

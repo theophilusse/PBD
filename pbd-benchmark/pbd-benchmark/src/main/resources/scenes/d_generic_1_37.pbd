@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_generic_1 xy=5x4
+# asset=d_generic_1_37
+
+plane shape1 {
+  pos   = (-0.0933500, 0.00000, 0.549200)
+  scale = (0.419700, 1, 0.344200)
+  mat   = default
+  # APPROXIMATION: bounding box of a 5-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape2 {
+  pos   = (0.211300, 0.00000, 0.571750)
+  scale = (0.342400, 1, 0.324900)
+  mat   = default
+  # APPROXIMATION: bounding box of a 6-point polygon, not its exact silhouette - see console output at conversion time
+}
+

@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_school_01 xy=6x2
+# asset=location_community_school_01_22
+
+cube shape1 {
+  pos   = (0.611100, 1.03425, -0.419900)
+  scale = (1.59340, 2.06850, 0.0690000)
+  mat   = default
+}
+

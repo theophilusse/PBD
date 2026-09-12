@@ -1,0 +1,33 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=street_decoration_01 xy=7x4
+# asset=street_decoration_01_39
+
+cube shape1 {
+  pos   = (0.00000, 1.39340, -0.280200)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.345600, 0.891200, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.236900, 0.473950, -0.387200)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.104600, 0.947900, 0.179000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.263200, 0.473950, -0.387800)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.105800, 0.947900, 0.179000)
+  mat   = default
+}
+
+plane shape4 {
+  pos   = (-0.00720000, 0.00000, 0.0366000)
+  scale = (1.01520, 1, 0.950600)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

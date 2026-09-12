@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_tables_low_01 xy=4x1
+# asset=furniture_tables_low_01_12
+# property Surface=18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00850000, 0.220100, -0.00620000)
+  scale = (0.592600, 0.440200, 0.960000)
+  mat   = default
+}
+

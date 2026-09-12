@@ -1,0 +1,32 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_detailing_02 xy=4x0
+# asset=walls_detailing_02_4
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.283800, 0.0417000, 0.284000)
+  scale = (0.432200, 0.0834000, 0.432200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.254700, 2.43225, 0.263100)
+  scale = (0.490600, 0.0345000, 0.473800)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.260500, 1.22470, 0.280000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.331200, 2.44950, 0.331200)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.272200, 0.0555000, 0.283100)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.426000, 0.110900, 0.426000)
+  mat   = default
+}
+

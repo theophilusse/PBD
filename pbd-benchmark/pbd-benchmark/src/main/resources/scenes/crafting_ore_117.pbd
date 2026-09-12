@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafting_ore xy=5x14
+# asset=crafting_ore_117
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.214500, 0.0749000, -0.197700)
+  scale = (0.437800, 0.149800, 0.604600)
+  mat   = default
+}
+

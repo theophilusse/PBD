@@ -1,0 +1,41 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_04 xy=2x7
+# asset=crafted_04_58
+
+cube shape1 {
+  pos   = (0.587800, 0.346950, 0.0368000)
+  scale = (1.82800, 0.0739000, 0.523000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.204000, 0.151100, 0.233900)
+  scale = (0.0708000, 0.302200, 0.0600000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (1.37440, 0.151100, 0.190000)
+  scale = (0.0708000, 0.302200, 0.0600000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (1.37440, 0.151100, -0.155300)
+  scale = (0.0708000, 0.302200, 0.0600000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (1.35710, 0.423900, 0.0359000)
+  scale = (0.0776000, 0.0778000, 0.414000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (1.35420, 0.589650, 0.0331000)
+  scale = (0.0258000, 0.254100, 0.332400)
+  mat   = default
+}
+

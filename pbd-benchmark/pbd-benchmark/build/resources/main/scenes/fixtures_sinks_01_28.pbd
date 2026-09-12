@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_sinks_01 xy=4x3
+# asset=fixtures_sinks_01_28
+# property Surface=32
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0500000, 0.675000, 0.225000)
+  scale = (0.800000, 0.250000, 0.550000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0250000, 0.275000, 0.300000)
+  scale = (0.250000, 0.550000, 0.400000)
+  mat   = default
+}
+

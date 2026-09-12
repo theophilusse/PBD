@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_entertainment_theatre_01 xy=1x12
+# asset=location_entertainment_theatre_01_97
+
+cylinder shape1 {
+  pos   = (0.149900, 1.38470, 0.0999000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.160000, 2.44950, 0.160000)
+  mat   = default
+}
+

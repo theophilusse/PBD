@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_doors_frames_01 xy=1x0
+# asset=fixtures_doors_frames_01_1
+
+cube shape1 {
+  pos   = (0.0172000, 2.21035, -0.469000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0620000, 0.477900, 0.965800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.427600, 0.985650, -0.469000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0622000, 1.97130, 0.0776000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.460800, 0.985650, -0.468900)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0622000, 1.97130, 0.0776000)
+  mat   = default
+}
+

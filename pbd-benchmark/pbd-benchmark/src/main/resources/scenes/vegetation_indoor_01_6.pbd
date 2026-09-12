@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_indoor_01 xy=6x0
+# asset=vegetation_indoor_01_6
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.315200, 1.11360, 0.320700)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.343800, 0.492000, 0.343800)
+  mat   = default
+}
+

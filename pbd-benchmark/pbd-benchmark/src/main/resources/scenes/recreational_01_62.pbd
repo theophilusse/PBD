@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_01 xy=6x7
+# asset=recreational_01_62
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.00000, 0.309400, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.477600, 0.618900, 0.477600)
+  mat   = default
+}
+

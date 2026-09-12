@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=signs_one-off_lights_01 xy=0x2
+# asset=signs_one-off_lights_01_16
+# property Translucent=true
+
+plane shape1 {
+  pos   = (-0.233950, 0.00000, 0.621950)
+  scale = (2.00070, 1, 4.08310)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

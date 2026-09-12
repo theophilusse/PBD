@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_decoration_01 xy=3x5
+# asset=walls_decoration_01_43
+
+cube shape1 {
+  pos   = (-0.424000, 1.43460, 0.0284000)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.960400, 1.17260, 0.0472000)
+  mat   = default
+}
+

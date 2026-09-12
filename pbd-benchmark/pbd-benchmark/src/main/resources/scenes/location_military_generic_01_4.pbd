@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_military_generic_01 xy=4x0
+# asset=location_military_generic_01_4
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0350000, 2.05975, -0.0350000)
+  scale = (1.03000, 0.779500, 1.03000)
+  mat   = default
+}
+

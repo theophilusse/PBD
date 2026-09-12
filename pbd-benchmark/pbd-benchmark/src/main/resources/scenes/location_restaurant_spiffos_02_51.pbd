@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_spiffos_02 xy=3x6
+# asset=location_restaurant_spiffos_02_51
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0250000, 2.00000, 0.00000)
+  scale = (0.0500000, 1.00000, 2.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.0998000, 0.850000, 0.100400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.180000, 1.70000, 0.180000)
+  mat   = default
+}
+

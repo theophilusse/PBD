@@ -1,0 +1,39 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_farming_trampled_01 xy=6x1
+# asset=vegetation_farming_trampled_01_14
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.369300, 0.172300, -0.345600)
+  scale = (0.0348000, 0.344600, 0.0202000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.242400, 0.375350, -0.322700)
+  scale = (0.0348000, 0.750700, 0.0202000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.329300, 0.350000, 0.193400)
+  rot   = (0.000, 0.000, 5.257)
+  scale = (0.0348000, 0.699800, 0.0202000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.381400, 0.366400, 0.169100)
+  rot   = (-82.49, 0.000, 7.980)
+  scale = (0.0348000, 0.726800, 0.0202000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.391600, 0.645150, 0.316800)
+  rot   = (-88.14, 0.000, -17.03)
+  scale = (0.0428000, 1.28430, 0.0202000)
+  mat   = default
+}
+

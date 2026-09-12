@@ -1,0 +1,14 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=seating_01 xy=7x7
+# asset=seating_01_63
+# property Translucent=true
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (0.189900, 0.755500, -0.0611000)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.0636000, 0.489000, 0.474400)
+  mat   = default
+}
+

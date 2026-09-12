@@ -1,0 +1,78 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_02 xy=0x12
+# asset=crafted_02_96
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.0960000, 0.366400)
+  scale = (1.00000, 0.192000, 0.267000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 0.244700, 0.0506000)
+  scale = (1.00000, 0.227000, 0.385600)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00000, 0.461600, -0.199300)
+  scale = (1.00000, 0.228400, 0.420600)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00000, 0.695550, -0.424500)
+  scale = (1.00000, 0.228700, 0.372200)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.00000, 0.895100, -0.656700)
+  scale = (1.00000, 0.224200, 0.411400)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (0.00000, 1.11140, -0.894500)
+  scale = (1.00000, 0.228400, 0.398400)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (0.00000, 1.32915, -1.14070)
+  scale = (1.00000, 0.261100, 0.475400)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (0.00000, 1.53960, -1.38890)
+  scale = (1.00000, 0.248600, 0.415600)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (0.00000, 1.70040, -1.66160)
+  scale = (1.00000, 0.192000, 0.313000)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (0.00000, 1.94600, -1.92400)
+  scale = (1.00000, 0.235600, 0.382600)
+  mat   = default
+}
+
+cube shape11 {
+  pos   = (0.00000, 2.12915, -2.15130)
+  scale = (1.00000, 0.252700, 0.386400)
+  mat   = default
+}
+
+cube shape12 {
+  pos   = (0.00000, 2.35170, -2.37060)
+  scale = (1.00000, 0.192000, 0.257800)
+  mat   = default
+}
+

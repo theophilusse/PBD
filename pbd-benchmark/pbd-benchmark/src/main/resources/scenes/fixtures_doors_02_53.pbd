@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_doors_02 xy=5x6
+# asset=fixtures_doors_02_53
+
+cube shape1 {
+  pos   = (-0.445100, 1.01685, -0.421900)
+  scale = (0.0332000, 0.245900, 0.0458000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.00795000, 0.00000, 0.779750)
+  scale = (0.999900, 1, 2.44950)
+  mat   = default
+}
+

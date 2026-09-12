@@ -1,0 +1,46 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=camping_03 xy=3x1
+# asset=camping_03_11
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00170000, 0.0543000, 0.448400)
+  scale = (0.708600, 0.108600, 1.92460)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.589100, 0.0401500, 1.23610)
+  scale = (0.446400, 0.0803000, 0.527800)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.544100, 0.716700, 1.26110)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0744000, 1.43340, 0.0744000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.544100, 0.716700, -0.584100)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0744000, 1.43340, 0.0744000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.460000, 1.08590, 0.395200)
+  rot   = (180.0, 0.000, 0.000)
+  scale = (0.0744000, 2.17610, 0.0744000)
+  mat   = default
+}
+
+plane shape6 {
+  pos   = (0.657050, 0.421200, 1.13115)
+  scale = (2.06570, 1, 1.34410)
+  mat   = default
+  # APPROXIMATION: bounding box of a 5-point polygon, not its exact silhouette - see console output at conversion time
+}
+

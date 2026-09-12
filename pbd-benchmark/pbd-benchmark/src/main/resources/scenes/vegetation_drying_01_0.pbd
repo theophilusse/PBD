@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_drying_01 xy=0x0
+# asset=vegetation_drying_01_0
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0250000, 1.22475, -0.0750000)
+  scale = (0.950000, 2.44950, 0.850000)
+  mat   = default
+}
+

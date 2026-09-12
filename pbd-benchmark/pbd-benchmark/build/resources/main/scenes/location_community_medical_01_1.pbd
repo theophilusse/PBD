@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=1x0
+# asset=location_community_medical_01_1
+# property ItemHeight=33
+
+cube shape1 {
+  pos   = (0.0360000, 0.374200, 0.119000)
+  scale = (0.701200, 0.748400, 0.760400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0360000, 0.742850, -0.0627000)
+  rot   = (11.56, 0.000, 0.000)
+  scale = (0.701200, 0.100300, 0.528400)
+  mat   = default
+}
+

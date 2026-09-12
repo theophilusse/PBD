@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_cemetary_01 xy=6x3
+# asset=location_community_cemetary_01_30
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.250000, 0.00000)
+  scale = (0.800000, 0.500000, 0.800000)
+  mat   = default
+}
+

@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=7x7
+# asset=industry_02_63
+
+cube shape1 {
+  pos   = (-0.250000, 1.00000, -0.0500000)
+  scale = (0.500000, 2.00000, 0.800000)
+  mat   = default
+}
+

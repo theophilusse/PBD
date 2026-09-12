@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_entertainment_gallery_01 xy=0x11
+# asset=location_entertainment_gallery_01_88
+
+cube shape1 {
+  pos   = (0.00780000, 1.22470, -0.00780000)
+  scale = (1.00000, 2.44940, 1.00000)
+  mat   = default
+}
+

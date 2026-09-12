@@ -1,0 +1,27 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_trailer_02 xy=5x1
+# asset=location_trailer_02_13
+# property Surface=29
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.452500, 0.662600, -0.00490000)
+  scale = (1.60520, 0.113400, 0.766200)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.300500, 0.302800, 0.118400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0898000, 0.605700, 0.0898000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.617200, 0.302800, 0.118400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0898000, 0.605700, 0.0898000)
+  mat   = default
+}
+

@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_detailing_02 xy=1x2
+# asset=walls_detailing_02_17
+# property CurtainOffset=0.0000 1.9137 -0.4531
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.335700, 1.22475, -0.333000)
+  scale = (0.140200, 2.44950, 0.113400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.517000, 1.22475, -0.333000)
+  scale = (0.140200, 2.44950, 0.113400)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0382000, 2.13170, -0.333000)
+  scale = (1.09780, 0.698600, 0.113400)
+  mat   = default
+}
+

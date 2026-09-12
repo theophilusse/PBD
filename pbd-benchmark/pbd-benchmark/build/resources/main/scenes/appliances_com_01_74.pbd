@@ -1,0 +1,28 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_com_01 xy=2x9
+# asset=appliances_com_01_74
+# property ItemHeight=26
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.206100, 0.985550, 0.285400)
+  rot   = (-180.0, -0.01980, -180.0)
+  scale = (0.551000, 0.237500, 0.485600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.174800, 1.32145, 0.278400)
+  rot   = (-180.0, -0.01980, -180.0)
+  scale = (0.492400, 0.434100, 0.312800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.192700, 0.915250, -0.0781000)
+  rot   = (-180.0, -0.01980, -180.0)
+  scale = (0.551000, 0.0969000, 0.207000)
+  mat   = default
+}
+

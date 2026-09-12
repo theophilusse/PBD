@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_doors_01 xy=1x13
+# asset=fixtures_doors_01_105
+# property CurtainOffset=0.0000 2.3438 -0.4531
+
+cube shape1 {
+  pos   = (0.00000, 1.22475, -0.470000)
+  scale = (1.00000, 2.44950, 0.0600000)
+  mat   = default
+}
+

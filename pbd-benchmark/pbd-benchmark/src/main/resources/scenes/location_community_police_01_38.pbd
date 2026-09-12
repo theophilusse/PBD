@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_police_01 xy=6x4
+# asset=location_community_police_01_38
+
+plane shape1 {
+  pos   = (-0.304600, 0.00000, 1.20410)
+  scale = (1.00000, 1, 2.42380)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (-0.351150, 2.42420, -0.0308500)
+  scale = (0.0937000, 1, 1.04670)
+  mat   = default
+  # APPROXIMATION: bounding box of a 6-point polygon, not its exact silhouette - see console output at conversion time
+}
+

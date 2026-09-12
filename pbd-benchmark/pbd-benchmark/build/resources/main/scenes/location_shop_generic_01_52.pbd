@@ -1,0 +1,95 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_generic_01 xy=4x6
+# asset=location_shop_generic_01_52
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.200600, 0.691900, 0.217800)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0440000, 1.38390, 0.0440000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.199900, 0.716600, -0.125200)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0440000, 1.38360, 0.0440000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.145000, 0.710100, 0.218000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0440000, 1.42020, 0.0440000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.144700, 0.704700, -0.126100)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0440000, 1.38390, 0.0440000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.177300, 0.0387000, 0.122600)
+  scale = (0.0600000, 0.599500, 0.0600000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.203700, 0.0359000, -0.0835000)
+  scale = (0.0700000, 0.599500, 0.0700000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (0.127300, 0.0359000, 0.218100)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0700000, 0.547200, 0.0700000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (-0.0972000, 0.0359000, -0.164100)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0700000, 0.547200, 0.0700000)
+  mat   = default
+}
+
+cylinder shape9 {
+  pos   = (0.198700, 1.06760, 0.0443000)
+  rot   = (180.0, -0.01970, 180.0)
+  scale = (0.0400000, 0.350100, 0.0400000)
+  mat   = default
+}
+
+cylinder shape10 {
+  pos   = (-0.157900, 1.06760, 0.0444000)
+  rot   = (180.0, -0.01970, 180.0)
+  scale = (0.0400000, 0.350100, 0.0400000)
+  mat   = default
+}
+
+cylinder shape11 {
+  pos   = (0.0292000, 1.06760, 0.0177000)
+  rot   = (180.0, 89.98, 180.0)
+  scale = (0.0400000, 0.350100, 0.0400000)
+  mat   = default
+}
+
+cylinder shape12 {
+  pos   = (-0.265200, 1.16910, 0.339800)
+  rot   = (57.58, -28.20, 36.65)
+  scale = (0.0600000, 0.516600, 0.0600000)
+  mat   = default
+}
+
+cylinder shape13 {
+  pos   = (0.275200, 1.25790, -0.195700)
+  rot   = (-60.09, -27.03, -37.45)
+  scale = (0.0600000, 0.338900, 0.0600000)
+  mat   = default
+}
+

@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=carpentry_03 xy=5x9
+# asset=carpentry_03_77
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.444100, 0.0656500, 0.0219000)
+  scale = (0.111800, 0.131300, 0.672400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.435900, 0.410950, 0.429100)
+  scale = (0.139400, 0.821900, 0.141800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.429900, 0.468400, -0.247800)
+  rot   = (50.31, 0.000, 0.000)
+  scale = (0.136000, 0.839000, 0.0886000)
+  mat   = default
+}
+

@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=camping_01 xy=1x2
+# asset=camping_01_17
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.225400, 1.80095, 0.0133000)
+  scale = (0.450400, 1.27350, 0.530200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.434100, 1.58005, -0.0415000)
+  scale = (0.0330000, 0.676100, 0.334800)
+  mat   = default
+}
+

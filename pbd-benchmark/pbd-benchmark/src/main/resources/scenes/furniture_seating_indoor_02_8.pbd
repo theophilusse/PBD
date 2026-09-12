@@ -1,0 +1,39 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_seating_indoor_02 xy=0x1
+# asset=furniture_seating_indoor_02_8
+# property Surface=18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0541000, 0.392900, 0.0129000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.478600, 0.117200, 0.492000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.172400, 0.691600, 0.0329000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.465000, 0.419800, 0.0994000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.153300, 0.183100, 0.218500)
+  scale = (0.0636000, 0.366200, 0.0612000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.274900, 0.183100, 0.227400)
+  scale = (0.0528000, 0.366200, 0.0474000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.285900, 0.183100, -0.150700)
+  scale = (0.0528000, 0.366200, 0.0476000)
+  mat   = default
+}
+

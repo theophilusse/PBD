@@ -1,0 +1,33 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=6x9
+# asset=location_community_medical_01_78
+
+cube shape1 {
+  pos   = (-0.0581000, 0.704000, -0.466400)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (1.92600, 0.0842000, 0.911800)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0495000, 0.331250, -0.216500)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.412200, 0.662500, 0.398600)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (0.0702500, 0.00000, -0.728750)
+  scale = (0.499900, 1, 0.216900)
+  mat   = default
+  # APPROXIMATION: bounding box of a 7-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (-0.0317500, 0.00000, -0.397100)
+  scale = (0.374900, 1, 0.331800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

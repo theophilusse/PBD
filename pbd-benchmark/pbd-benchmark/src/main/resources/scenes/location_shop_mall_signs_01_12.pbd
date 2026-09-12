@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_mall_signs_01 xy=4x1
+# asset=location_shop_mall_signs_01_12
+
+cube shape1 {
+  pos   = (0.00000, 1.22475, -0.400000)
+  scale = (1.60000, 2.44950, 0.100000)
+  mat   = default
+}
+

@@ -1,0 +1,36 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_cooking_01 xy=6x6
+# asset=appliances_cooking_01_54
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.452500, 0.575000, 0.00000)
+  scale = (0.0650000, 1.15000, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.125000, 0.620000, 0.00000)
+  scale = (0.590000, 0.580000, 1.00000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.190000, 0.455000, 0.00000)
+  scale = (0.0400000, 0.910000, 1.00000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.260000, 0.855000, 0.00000)
+  scale = (0.100000, 0.110000, 1.00000)
+  mat   = default
+}
+
+plane shape5 {
+  pos   = (0.00000, 0.00000, 0.00000)
+  scale = (1.00000, 1, 1.00000)
+  mat   = default
+}
+

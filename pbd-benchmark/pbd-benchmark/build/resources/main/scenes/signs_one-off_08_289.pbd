@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=signs_one-off_08 xy=1x36
+# asset=signs_one-off_08_289
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.150000, 1.30000, 0.00000)
+  scale = (1.30000, 2.60000, 0.200000)
+  mat   = default
+}
+

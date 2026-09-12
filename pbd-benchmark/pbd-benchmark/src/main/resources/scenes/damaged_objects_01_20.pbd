@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=damaged_objects_01 xy=4x2
+# asset=damaged_objects_01_20
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0265000, 0.132250, 0.288300)
+  scale = (0.507000, 0.264500, 0.260200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0182000, 0.132250, -0.0412000)
+  scale = (0.118800, 0.264500, 0.0776000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0864000, 0.0358500, -0.0724000)
+  rot   = (0.000, -10.45, 0.000)
+  scale = (0.129800, 0.0717000, 0.420800)
+  mat   = default
+}
+

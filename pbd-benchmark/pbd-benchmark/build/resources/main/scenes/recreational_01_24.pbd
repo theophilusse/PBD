@@ -1,0 +1,53 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_01 xy=0x3
+# asset=recreational_01_24
+# property ItemHeight=38
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0124000, 0.648950, -0.719200)
+  scale = (0.762600, 0.405900, 1.39180)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00240000, 1.24840, -1.35790)
+  scale = (0.850200, 0.582000, 0.236400)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (-0.0119000, 0.957900, -2.10900)
+  scale = (0.762200, 1, 1.39100)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (0.0900500, 0.850400, -0.946800)
+  scale = (1.38590, 1, 0.107000)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape5 {
+  pos   = (0.393200, 0.00000, 0.176250)
+  scale = (0.0662000, 1, 0.484700)
+  mat   = default
+}
+
+plane shape6 {
+  pos   = (-0.313700, 0.00000, 0.168400)
+  scale = (0.0986000, 1, 0.448800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape7 {
+  pos   = (0.402650, 0.00000, -1.11665)
+  scale = (0.121500, 1, 0.497500)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

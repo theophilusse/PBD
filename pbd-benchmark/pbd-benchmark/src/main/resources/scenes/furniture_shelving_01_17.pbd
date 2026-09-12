@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_shelving_01 xy=1x2
+# asset=furniture_shelving_01_17
+# property Surface=33
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.0600000, -0.200000)
+  scale = (1.60000, 0.120000, 0.400000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 0.415000, -0.200000)
+  scale = (1.60000, 0.0700000, 0.400000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00000, 0.775000, -0.200000)
+  scale = (1.60000, 0.0900000, 0.400000)
+  mat   = default
+}
+

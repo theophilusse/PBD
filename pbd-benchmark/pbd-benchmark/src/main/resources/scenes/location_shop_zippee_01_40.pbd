@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_zippee_01 xy=0x5
+# asset=location_shop_zippee_01_40
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.410000, 0.440000, -0.160000)
+  scale = (0.0800000, 0.880000, 1.28000)
+  mat   = default
+}
+

@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_bedding_01 xy=6x8
+# asset=furniture_bedding_01_70
+# property Surface=29
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.100000, 0.360000, 0.0250000)
+  scale = (0.800000, 0.720000, 0.950000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.375000, 0.500000, 0.0250000)
+  scale = (0.150000, 1.00000, 0.950000)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_bathroom_01 xy=7x1
+# asset=fixtures_bathroom_01_15
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.350000, 1.45000, 0.0500000)
+  scale = (0.300000, 0.900000, 0.500000)
+  mat   = default
+}
+

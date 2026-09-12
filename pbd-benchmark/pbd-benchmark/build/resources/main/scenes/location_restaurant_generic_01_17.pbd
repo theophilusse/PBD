@@ -1,0 +1,41 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_generic_01 xy=1x2
+# asset=location_restaurant_generic_01_17
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.509600, 0.441500, -1.07990)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (2.86160, 0.883000, 1.25360)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.516500, 1.52125, -1.20530)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (3.00000, 0.0729000, 0.251600)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.515200, 1.19155, -2.25890)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0242000, 0.615900, 0.146400)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.818700, 1.47105, -1.21140)
+  rot   = (90.00, -75.00, 90.00)
+  scale = (3.02640, 0.0263000, 0.415600)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.172200, 1.49105, -1.21340)
+  rot   = (-90.00, -75.00, -90.00)
+  scale = (3.02640, 0.0487000, 0.397400)
+  mat   = default
+}
+

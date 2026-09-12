@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_indoor_01 xy=4x1
+# asset=vegetation_indoor_01_12
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.0277000, 0.241300, -0.0596000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.453800, 0.482600, 0.453800)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.0497000, 0.00000, 0.937800)
+  scale = (1.04960, 1, 1.28840)
+  mat   = default
+  # APPROXIMATION: bounding box of a 7-point polygon, not its exact silhouette - see console output at conversion time
+}
+

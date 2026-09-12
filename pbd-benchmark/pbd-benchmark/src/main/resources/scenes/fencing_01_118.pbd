@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fencing_01 xy=6x14
+# asset=fencing_01_118
+
+cube shape1 {
+  pos   = (-0.448600, 0.648200, -0.449300)
+  rot   = (0.000, 45.00, 0.000)
+  scale = (0.0486000, 0.826800, 1.89140)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.201300, 0.0602500, 0.186600)
+  rot   = (0.000, 45.00, 0.000)
+  scale = (0.439200, 0.120500, 0.0694000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.193000, 0.177450, 0.193000)
+  rot   = (0.000, 45.00, 0.000)
+  scale = (0.0602000, 0.114500, 0.0598000)
+  mat   = default
+}
+

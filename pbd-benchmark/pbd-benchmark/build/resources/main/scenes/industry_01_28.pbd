@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_01 xy=4x3
+# asset=industry_01_28
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (-0.475000, 1.22475, 0.00000)
+  scale = (0.0500000, 2.44950, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 1.22475, -0.450000)
+  scale = (1.00000, 2.44950, 0.100000)
+  mat   = default
+}
+

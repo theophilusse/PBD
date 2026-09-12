@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=stashes_01 xy=0x2
+# asset=stashes_01_16
+
+cube shape1 {
+  pos   = (0.0250000, 0.100000, 0.0250000)
+  scale = (0.950000, 0.200000, 0.950000)
+  mat   = default
+}
+

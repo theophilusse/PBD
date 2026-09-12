@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_escalators_01 xy=0x5
+# asset=fixtures_escalators_01_40
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.335800, 1.23750, -0.00940000)
+  scale = (0.204400, 3.17980, 1.13560)
+  mat   = default
+}
+

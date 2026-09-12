@@ -1,0 +1,36 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_storage_01 xy=6x6
+# asset=furniture_storage_01_54
+# property Surface=23
+
+cube shape1 {
+  pos   = (-0.188300, 0.239500, 0.316900)
+  scale = (0.0756000, 0.479000, 0.0752000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0109000, 0.510150, 0.0250000)
+  scale = (0.607400, 0.106100, 0.603800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.257000, 0.239500, 0.295400)
+  scale = (0.0756000, 0.479000, 0.0752000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.282400, 0.239500, -0.194100)
+  scale = (0.0756000, 0.479000, 0.0752000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.0141000, 0.346350, -0.000600000)
+  scale = (0.557000, 0.223300, 0.570400)
+  mat   = default
+}
+

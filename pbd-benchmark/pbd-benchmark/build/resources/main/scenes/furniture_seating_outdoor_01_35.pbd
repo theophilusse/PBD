@@ -1,0 +1,31 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_seating_outdoor_01 xy=3x4
+# asset=furniture_seating_outdoor_01_35
+# property Surface=17
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.370000, 0.200000)
+  scale = (0.340000, 0.100000, 1.20000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0350000, 0.170000, 0.450000)
+  scale = (0.270000, 0.300000, 0.100000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0350000, 0.170000, -0.250000)
+  scale = (0.270000, 0.300000, 0.100000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.0250000, 0.0100000, 0.175000)
+  scale = (0.450000, 0.0200000, 1.25000)
+  mat   = default
+}
+

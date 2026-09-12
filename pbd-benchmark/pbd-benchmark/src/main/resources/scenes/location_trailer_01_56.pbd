@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_trailer_01 xy=0x7
+# asset=location_trailer_01_56
+
+cube shape1 {
+  pos   = (-0.954800, 0.100000, -0.955000)
+  scale = (1.00000, 0.200000, 1.00000)
+  mat   = default
+}
+

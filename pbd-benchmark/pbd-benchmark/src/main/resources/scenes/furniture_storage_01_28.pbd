@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_storage_01 xy=4x3
+# asset=furniture_storage_01_28
+# property Surface=77
+
+cube shape1 {
+  pos   = (0.599000, 0.972400, 0.130900)
+  scale = (1.18980, 1.94480, 0.623200)
+  mat   = default
+}
+

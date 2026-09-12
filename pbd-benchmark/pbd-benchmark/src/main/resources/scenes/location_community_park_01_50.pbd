@@ -1,0 +1,24 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_park_01 xy=2x6
+# asset=location_community_park_01_50
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0724000, 0.631000, -0.343100)
+  scale = (0.0486000, 1.26200, 0.295400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.243000, 0.631000, -0.246000)
+  scale = (0.679400, 1.26200, 0.101800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.295900, 0.127300, 0.152200)
+  scale = (0.408200, 0.254600, 0.695600)
+  mat   = default
+}
+

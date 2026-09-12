@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_mall_01 xy=3x2
+# asset=location_shop_mall_01_19
+# property OpaquePixelsOnly=true
+
+cube shape1 {
+  pos   = (0.0234000, 1.22470, -0.468200)
+  scale = (1.04700, 2.44940, 0.0634000)
+  mat   = default
+}
+

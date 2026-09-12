@@ -1,0 +1,36 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=4x2
+# asset=location_community_medical_01_20
+# property ItemHeight=26
+
+cube shape1 {
+  pos   = (0.469600, 0.439400, 0.000800000)
+  scale = (1.92360, 0.420800, 0.909200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.454800, 0.573500, -0.0275000)
+  scale = (0.0864000, 0.610200, 0.960400)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (1.39040, 0.514650, 0.00180000)
+  scale = (0.0864000, 0.570100, 0.901400)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (1.00940, 0.524550, -0.477200)
+  scale = (0.682600, 0.511500, 0.0580000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.116900, 0.414850, -0.477200)
+  scale = (0.682600, 0.511500, 0.0580000)
+  mat   = default
+}
+

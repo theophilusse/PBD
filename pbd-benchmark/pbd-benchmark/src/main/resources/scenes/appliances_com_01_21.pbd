@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_com_01 xy=5x2
+# asset=appliances_com_01_21
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.31470, 0.00000)
+  rot   = (0.000, 0.000, -39.45)
+  scale = (2.00000, 0.200000, 2.00000)
+  mat   = default
+}
+

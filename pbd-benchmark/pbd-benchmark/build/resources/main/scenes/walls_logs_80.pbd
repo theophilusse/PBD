@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_logs xy=0x10
+# asset=walls_logs_80
+
+cube shape1 {
+  pos   = (-0.375200, 0.556050, -0.490900)
+  scale = (0.132800, 1.11210, 1.98180)
+  mat   = default
+}
+

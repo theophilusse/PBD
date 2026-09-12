@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=3x2
+# asset=industry_02_19
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.22475, 0.250000)
+  scale = (0.600000, 2.44950, 0.500000)
+  mat   = default
+}
+

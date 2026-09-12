@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_sports_01 xy=2x2
+# asset=recreational_sports_01_18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0250000, 2.42475, 0.275000)
+  scale = (0.250000, 0.0495000, 1.05000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0250000, 1.20000, -0.125000)
+  scale = (0.250000, 2.40000, 0.250000)
+  mat   = default
+}
+

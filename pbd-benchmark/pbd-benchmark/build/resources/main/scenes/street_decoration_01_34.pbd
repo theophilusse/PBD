@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=street_decoration_01 xy=2x4
+# asset=street_decoration_01_34
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.170100, 0.0775500, -0.149800)
+  scale = (1.00000, 0.155100, 0.182400)
+  mat   = default
+}
+

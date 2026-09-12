@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_04 xy=4x10
+# asset=crafted_04_84
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.275000, 0.875000, 0.0250000)
+  scale = (1.05000, 1.75000, 0.950000)
+  mat   = default
+}
+

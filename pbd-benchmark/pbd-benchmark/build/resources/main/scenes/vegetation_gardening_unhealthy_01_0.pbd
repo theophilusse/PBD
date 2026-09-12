@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_gardening_unhealthy_01 xy=0x0
+# asset=vegetation_gardening_unhealthy_01_0
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.0253500, 0.00000)
+  scale = (1.00000, 0.0507000, 1.00000)
+  mat   = default
+}
+

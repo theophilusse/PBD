@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_02 xy=2x6
+# asset=crafted_02_50
+# property Surface=39
+
+cylinder shape1 {
+  pos   = (0.00000, 0.495200, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.740000, 0.990300, 0.740000)
+  mat   = default
+}
+

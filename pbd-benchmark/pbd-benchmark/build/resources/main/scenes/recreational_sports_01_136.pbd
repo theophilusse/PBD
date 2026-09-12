@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_sports_01 xy=0x17
+# asset=recreational_sports_01_136
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.00000, 1.22470, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (1.00000, 2.44950, 1.00000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.00000, 0.00000, 0.00000)
+  scale = (1.00000, 1, 1.00000)
+  mat   = default
+}
+

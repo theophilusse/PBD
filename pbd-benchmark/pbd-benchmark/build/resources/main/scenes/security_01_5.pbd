@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=security_01 xy=5x0
+# asset=security_01_5
+
+cube shape1 {
+  pos   = (-0.407700, 1.07540, 0.00000)
+  scale = (0.0920000, 2.15080, 1.00000)
+  mat   = default
+}
+

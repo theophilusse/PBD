@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=lighting_indoor_02 xy=2x9
+# asset=lighting_indoor_02_74
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.82500, 0.425000)
+  scale = (0.600000, 0.950000, 0.150000)
+  mat   = default
+}
+

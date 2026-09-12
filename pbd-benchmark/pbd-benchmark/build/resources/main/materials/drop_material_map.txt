@@ -1,0 +1,50 @@
+# Maps an asset's drop-item keyword to a default material name, so a
+# tileGeometry-converted asset can get a reasonable material automatically
+# instead of always falling back to "default". Matching is a
+# case-insensitive SUBSTRING check against whatever drop items are known
+# for an asset (see MaterialLookup.java) - "Plank" matches an asset that
+# drops "Plank" or "Plank2", not an exact-equality lookup.
+#
+# STARTING POINT ONLY: built from general knowledge of Project Zomboid's
+# item names, not the game's actual scripted drop tables (this session
+# has no access to those). Expect gaps and wrong guesses - refine this
+# against real drop data as it's found. One mapping per line, first
+# match wins, "#" starts a comment.
+#
+# Format: drop_item_keyword = material_name
+
+Plank = wood066
+Log = wood066
+TreeBranch = wood066
+Twig = wood066
+Log2 = wood066
+
+MetalBar = paintedMetal006
+ScrapMetal = paintedMetal006
+Sheet = paintedMetal006
+SheetMetal = paintedMetal006
+Pipe = paintedMetal006
+Nails = paintedMetal006
+MetalPipe = paintedMetal006
+
+RippedSheets = fabric045
+Sheets = fabric045
+Cloth = fabric045
+DenimStrips = fabric045
+CottonBalls = fabric045
+
+Leather = leather035
+LeatherStrips = leather035
+
+GlassBottle = glass
+GlassPiece = glass
+GlassJar = glass
+WindowGlass = glassreflective
+
+PlasticStrip = plastic011
+PlasticSheet = plastic011
+PlasticDoorKnob = plastic011
+
+Stone = rock018
+Rock = rock018
+SmallStone = rock018

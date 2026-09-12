@@ -1,0 +1,34 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_storage_02 xy=3x4
+# asset=furniture_storage_02_35
+# property Surface=77
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.458100, 0.397100, -0.0763000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.591400, 0.652200, 1.14020)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.459900, 1.30365, -0.141600)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.392400, 1.16170, 1.14020)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.436300, 1.92430, -0.146400)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.467400, 0.0770000, 1.29740)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.504400, 1.84290, -0.00890000)
+  scale = (0.405600, 0.192200, 0.405600)
+  mat   = default
+}
+

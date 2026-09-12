@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_cooking_01 xy=0x3
+# asset=appliances_cooking_01_24
+# property ItemHeight=19
+# property Surface=32
+
+cube shape1 {
+  pos   = (-0.188200, 1.05970, -0.0148000)
+  scale = (0.435000, 0.490800, 0.638000)
+  mat   = default
+}
+

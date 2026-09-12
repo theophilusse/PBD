@@ -1,0 +1,69 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_com_01 xy=5x11
+# asset=appliances_com_01_93
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0621000, 0.696500, 0.113900)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0920000, 1.00000, 1.79600)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.0146000, 0.650100, -0.0324000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.200000, 1.30000, 0.200000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.855400, 1.29040, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.100000, 0.160000, 0.100000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.730100, 1.28720, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.100000, 0.160000, 0.100000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (0.0724000, 1.42400, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.100000, 0.160000, 0.100000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.849600, 1.18100, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0200000, 0.160000, 0.0200000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (0.0672000, 1.23200, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0200000, 0.237600, 0.0200000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (-0.729600, 1.18350, 0.0676000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0200000, 0.160000, 0.0200000)
+  mat   = default
+}
+
+plane shape9 {
+  pos   = (0.0382500, 0.0542000, 0.766650)
+  scale = (0.828100, 1, 0.389100)
+  mat   = default
+  # APPROXIMATION: bounding box of a 6-point polygon, not its exact silhouette - see console output at conversion time
+}
+

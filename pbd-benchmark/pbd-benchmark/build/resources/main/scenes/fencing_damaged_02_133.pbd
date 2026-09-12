@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fencing_damaged_02 xy=5x16
+# asset=fencing_damaged_02_133
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.0111500, 0.00000)
+  scale = (1.00000, 0.0223000, 1.00000)
+  mat   = default
+}
+

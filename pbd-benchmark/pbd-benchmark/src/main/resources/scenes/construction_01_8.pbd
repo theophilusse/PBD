@@ -1,0 +1,53 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=construction_01 xy=0x1
+# asset=construction_01_8
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.449400, 0.402200, 0.203400)
+  rot   = (-14.95, 0.000, 0.000)
+  scale = (0.115000, 0.804400, 0.0324000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.422600, 0.402200, 0.203400)
+  rot   = (-14.95, 0.000, 0.000)
+  scale = (0.115000, 0.804400, 0.0324000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00740000, 0.638550, 0.106300)
+  rot   = (-14.95, 0.000, 0.000)
+  scale = (1.01540, 0.166100, 0.0676000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00740000, 0.345750, 0.184500)
+  rot   = (-14.95, 0.000, 0.000)
+  scale = (1.01540, 0.166100, 0.0676000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.445500, 0.856100, -0.0205000)
+  scale = (0.109000, 0.173000, 0.0588000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (0.416300, 0.860500, -0.0223000)
+  scale = (0.109000, 0.173000, 0.0588000)
+  mat   = default
+}
+
+plane shape7 {
+  pos   = (0.0396500, 0.00000, 0.107900)
+  scale = (1.28350, 1, 0.959400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

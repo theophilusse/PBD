@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=construction_01 xy=2x12
+# asset=construction_01_98
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.379300, 0.120350, 0.121600)
+  scale = (0.221000, 0.240700, 0.756800)
+  mat   = default
+}
+

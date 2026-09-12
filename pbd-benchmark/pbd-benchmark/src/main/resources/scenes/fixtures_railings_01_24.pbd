@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_railings_01 xy=0x3
+# asset=fixtures_railings_01_24
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.470000, 1.23000, 0.00000)
+  scale = (0.0600000, 2.44000, 1.20000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.425000, 0.00500000, 0.00000)
+  scale = (0.150000, 0.0100000, 1.20000)
+  mat   = default
+}
+

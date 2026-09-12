@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_accessories_01 xy=3x0
+# asset=location_shop_accessories_01_3
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.225000, 1.10000, 0.0250000)
+  scale = (0.550000, 0.400000, 0.650000)
+  mat   = default
+}
+

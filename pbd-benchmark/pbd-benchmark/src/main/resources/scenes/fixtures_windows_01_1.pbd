@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_windows_01 xy=1x0
+# asset=fixtures_windows_01_1
+# property CurtainOffset=0.0000 1.9688 -0.4062
+
+cube shape1 {
+  pos   = (-0.136900, 1.22470, -0.430200)
+  scale = (1.27380, 2.44940, 0.0334000)
+  mat   = default
+}
+

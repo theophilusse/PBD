@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_01 xy=0x10
+# asset=recreational_01_80
+# property Surface=30
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0526000, 0.372800, 0.00960000)
+  scale = (0.474600, 0.745600, 0.291600)
+  mat   = default
+}
+

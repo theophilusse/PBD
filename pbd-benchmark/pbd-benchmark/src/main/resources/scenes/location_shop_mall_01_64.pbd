@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_mall_01 xy=0x8
+# asset=location_shop_mall_01_64
+# property Surface=18
+
+cube shape1 {
+  pos   = (0.00780000, 0.229600, -0.00780000)
+  scale = (1.00000, 0.459200, 1.00000)
+  mat   = default
+}
+

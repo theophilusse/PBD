@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_generic_1 xy=2x1
+# asset=d_generic_1_10
+
+cube shape1 {
+  pos   = (-0.127000, 0.152150, 0.0965000)
+  scale = (0.341200, 0.304300, 0.407200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.182500, 0.0885000, 0.0230000)
+  scale = (0.268400, 0.177000, 0.207600)
+  mat   = default
+}
+

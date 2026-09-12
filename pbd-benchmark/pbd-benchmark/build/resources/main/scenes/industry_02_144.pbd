@@ -1,0 +1,33 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_02 xy=0x18
+# asset=industry_02_144
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0504000, 0.175100, -0.389400)
+  scale = (0.454800, 0.350200, 0.236600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.341400, 0.175100, -0.0453000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.455000, 0.350200, 0.331200)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (0.0805000, 0.00000, 0.397450)
+  scale = (0.203000, 1, 0.363700)
+  mat   = default
+  # APPROXIMATION: bounding box of a 7-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (-0.0504000, 0.351100, 0.0348000)
+  scale = (0.460800, 1, 0.460800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 9-point polygon, not its exact silhouette - see console output at conversion time
+}
+

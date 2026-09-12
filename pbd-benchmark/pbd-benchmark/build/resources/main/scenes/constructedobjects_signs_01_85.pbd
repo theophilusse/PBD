@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_signs_01 xy=5x10
+# asset=constructedobjects_signs_01_85
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.0286000, 0.750000, 0.114500)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.600000, 1.50000, 0.600000)
+  mat   = default
+}
+

@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_school_01 xy=0x4
+# asset=location_community_school_01_32
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.0375000, 1.86480, -0.407300)
+  rot   = (-0.01970, 0.000, -90.00)
+  scale = (0.569000, 0.0945000, 0.569000)
+  mat   = default
+}
+

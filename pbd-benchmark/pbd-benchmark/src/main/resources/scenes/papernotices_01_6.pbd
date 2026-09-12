@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=papernotices_01 xy=6x0
+# asset=papernotices_01_6
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.22475, -0.390000)
+  scale = (1.60000, 2.44950, 0.0200000)
+  mat   = default
+}
+

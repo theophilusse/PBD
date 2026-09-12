@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_detailing_02 xy=4x7
+# asset=walls_detailing_02_60
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.672800, 1.07160, -0.305300)
+  scale = (1.54000, 0.295100, 1.54000)
+  mat   = default
+}
+

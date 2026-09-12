@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_distillery_01 xy=0x0
+# asset=location_business_distillery_01_0
+# property Surface=73
+
+cube shape1 {
+  pos   = (0.0350000, 0.920000, 0.0350000)
+  scale = (0.970000, 1.84000, 0.970000)
+  mat   = default
+}
+

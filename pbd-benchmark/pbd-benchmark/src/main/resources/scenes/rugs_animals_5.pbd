@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=rugs_animals xy=5x0
+# asset=rugs_animals_5
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.0189000, 0.00000)
+  scale = (1.00000, 0.0378000, 1.00000)
+  mat   = default
+}
+

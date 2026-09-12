@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_office_generic_01 xy=3x3
+# asset=location_business_office_generic_01_27
+
+cube shape1 {
+  pos   = (0.175000, 0.0100000, -0.300000)
+  scale = (1.25000, 0.0200000, 0.300000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.175000, 0.710000, -0.395000)
+  scale = (1.25000, 1.38000, 0.110000)
+  mat   = default
+}
+

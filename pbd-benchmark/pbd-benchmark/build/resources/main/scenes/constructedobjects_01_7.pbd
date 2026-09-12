@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_01 xy=7x0
+# asset=constructedobjects_01_7
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0345000, 0.202350, 0.0172000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.414600, 0.404700, 0.860000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.489550, 0.00000, 0.601500)
+  scale = (0.312500, 1, 0.293400)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (-0.0390500, 0.00000, 0.543950)
+  scale = (0.859300, 1, 0.389100)
+  mat   = default
+  # APPROXIMATION: bounding box of a 13-point polygon, not its exact silhouette - see console output at conversion time
+}
+

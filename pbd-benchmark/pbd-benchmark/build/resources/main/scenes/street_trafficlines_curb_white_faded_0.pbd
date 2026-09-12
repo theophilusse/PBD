@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=street_trafficlines_curb_white_faded xy=0x0
+# asset=street_trafficlines_curb_white_faded_0
+# property UseObjectDepthTexture=true
+
+plane shape1 {
+  pos   = (-0.692400, 0.00000, 0.676800)
+  scale = (5.19540, 1, 5.13280)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

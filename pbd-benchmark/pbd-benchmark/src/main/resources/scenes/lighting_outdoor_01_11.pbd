@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=lighting_outdoor_01 xy=3x1
+# asset=lighting_outdoor_01_11
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.643900, 1.96900, -0.161700)
+  rot   = (0.000, 0.01970, 0.000)
+  scale = (0.773000, 0.800000, 0.290200)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.155100, 1.22470, -0.144700)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.174000, 2.44940, 0.174000)
+  mat   = default
+}
+

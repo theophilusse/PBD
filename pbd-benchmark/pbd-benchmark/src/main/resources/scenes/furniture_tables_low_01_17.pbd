@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_tables_low_01 xy=1x2
+# asset=furniture_tables_low_01_17
+# property Surface=18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.000100000, 0.380900, -0.0146000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.588400, 0.115800, 0.951200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.415600, 0.163700, -0.238000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0798000, 0.327400, 0.0802000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.396400, 0.163700, 0.230700)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0798000, 0.327400, 0.0802000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.420800, 0.163700, 0.230700)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0798000, 0.327400, 0.0802000)
+  mat   = default
+}
+

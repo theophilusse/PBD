@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_logs xy=7x6
+# asset=walls_logs_55
+
+cylinder shape1 {
+  pos   = (-0.441900, 1.22470, -0.442900)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.164000, 2.44950, 0.164000)
+  mat   = default
+}
+

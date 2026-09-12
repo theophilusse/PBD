@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_signs_01 xy=3x3
+# asset=constructedobjects_signs_01_27
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.378800, 0.576000, 0.0287000)
+  scale = (0.0662000, 1.15200, 0.0924000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.327200, 0.874550, 0.0804000)
+  scale = (0.0376000, 0.685100, 0.834600)
+  mat   = default
+}
+

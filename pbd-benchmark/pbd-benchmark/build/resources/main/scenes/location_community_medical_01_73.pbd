@@ -1,0 +1,70 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=1x9
+# asset=location_community_medical_01_73
+
+cube shape1 {
+  pos   = (-0.00760000, 0.649500, 0.520900)
+  scale = (0.724000, 0.249200, 1.75540)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.391500, 0.749800, 0.630300)
+  scale = (0.0702000, 0.330800, 0.834400)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.343400, 0.749800, 0.614500)
+  scale = (0.0702000, 0.330800, 0.834400)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.325000, 0.316600, 0.447100)
+  rot   = (-163.2, 0.000, 0.000)
+  scale = (0.0600000, 1.57280, 0.0600000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.361700, 0.316600, 0.447100)
+  rot   = (-163.2, 0.000, 0.000)
+  scale = (0.0600000, 1.57280, 0.0600000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.324000, 0.0776000, 0.398300)
+  scale = (0.0600000, 1.57280, 0.0600000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (-0.360800, 0.0776000, 0.398300)
+  scale = (0.0600000, 1.57280, 0.0600000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (-0.00530000, 0.0776000, 0.291200)
+  rot   = (0.000, -35.00, 0.000)
+  scale = (0.0600000, 1.16670, 0.0600000)
+  mat   = default
+}
+
+cylinder shape9 {
+  pos   = (-0.0188000, 0.0776000, 1.07860)
+  rot   = (0.000, -90.00, 0.000)
+  scale = (0.0600000, 0.745100, 0.0600000)
+  mat   = default
+}
+
+cylinder shape10 {
+  pos   = (-0.0188000, 0.0776000, -0.172000)
+  rot   = (0.000, -90.00, 0.000)
+  scale = (0.0600000, 0.745100, 0.0600000)
+  mat   = default
+}
+

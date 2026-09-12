@@ -1,0 +1,14 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=overlay_blood_wall_01 xy=4x0
+# asset=overlay_blood_wall_01_4
+# property Translucent=true
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (-0.242000, 1.22470, -0.421600)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0152000, 2.44940, 1.49960)
+  mat   = default
+}
+

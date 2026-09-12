@@ -1,0 +1,9 @@
+pbd_version 1
+include_material materials.pbdmat
+
+pbd_ref leg1 { source=table_leg.pbd pos=(-1, 0, -0.6) }
+pbd_ref leg2 { source=table_leg.pbd pos=( 1, 0, -0.6) }
+pbd_ref leg3 { source=table_leg.pbd pos=(-1, 0,  0.6) }
+pbd_ref leg4 { source=table_leg.pbd pos=( 1, 0,  0.6) }
+
+cube tabletop { pos=(0, 1, 0) scale=(2.4, 0.1, 1.6) mat=wood }

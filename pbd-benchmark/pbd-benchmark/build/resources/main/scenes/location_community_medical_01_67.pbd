@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=3x8
+# asset=location_community_medical_01_67
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (0.00000, 1.22470, -0.452600)
+  scale = (1.00000, 2.44940, 0.0946000)
+  mat   = default
+}
+

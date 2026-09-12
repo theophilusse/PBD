@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_ornamental_01 xy=2x6
+# asset=vegetation_ornamental_01_50
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.0178000, 0.473500, -0.000500000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.574800, 0.947000, 0.574800)
+  mat   = default
+}
+

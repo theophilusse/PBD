@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=preset_depthmaps_01 xy=6x0
+# asset=preset_depthmaps_01_6
+
+cube shape1 {
+  pos   = (-0.476300, 1.22470, 0.00000)
+  scale = (0.0464000, 2.44940, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 1.22470, -0.476600)
+  scale = (1.00000, 2.44940, 0.0466000)
+  mat   = default
+}
+

@@ -1,0 +1,61 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_services_beauty_01 xy=2x0
+# asset=location_services_beauty_01_2
+
+cube shape1 {
+  pos   = (-0.0671000, 0.396000, 0.000400000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.424200, 0.141000, 0.440000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0824000, 0.246600, 0.304200)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0842000, 0.0794000, 0.440000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.353600, 0.435050, -0.0976000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.336400, 0.278300, 0.0864000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.112400, 0.448250, -0.0455000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.336400, 0.278300, 0.0864000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.0734000, 0.714850, -0.246000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.106800, 0.385700, 0.440000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (-0.209800, 0.305950, 0.285600)
+  rot   = (-26.57, -90.00, 26.57)
+  scale = (0.0470000, 0.123700, 0.0442000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (0.0448000, 0.305950, 0.285600)
+  rot   = (-26.57, -90.00, 26.57)
+  scale = (0.0470000, 0.123700, 0.0442000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (0.0176000, 0.160800, 0.0652000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.332000, 0.321600, 0.332000)
+  mat   = default
+}
+

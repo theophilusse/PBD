@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_fireplaces_01 xy=3x6
+# asset=fixtures_fireplaces_01_51
+
+cube shape1 {
+  pos   = (0.00000, 0.650000, -0.325000)
+  scale = (1.60000, 1.30000, 0.250000)
+  mat   = default
+}
+

@@ -1,0 +1,66 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_04 xy=1x12
+# asset=crafted_04_97
+
+cube shape1 {
+  pos   = (-0.530400, 0.957450, -0.198500)
+  scale = (1.93900, 0.105100, 0.503600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.530400, 0.679050, -0.0109000)
+  scale = (1.93900, 0.156700, 0.878600)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-1.08990, 0.300400, 0.411100)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.130000, 0.600800, 0.130000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.163400, 0.300400, 0.267000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.140000, 0.600800, 0.140000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (0.163400, 0.300400, -0.282000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.140000, 0.600800, 0.140000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (-1.13550, 0.300400, -0.250000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.140000, 0.600800, 0.140000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (-0.674800, 0.326900, 0.295700)
+  rot   = (-90.00, -71.12, 0.000)
+  scale = (0.100000, 1.71980, 0.100000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (-0.134600, 0.221700, -0.264200)
+  rot   = (-90.00, -71.12, 0.000)
+  scale = (0.100000, 0.629400, 0.100000)
+  mat   = default
+}
+
+cylinder shape9 {
+  pos   = (-0.513300, 0.306700, 0.295700)
+  rot   = (90.00, -66.48, 180.0)
+  scale = (0.100000, 1.32250, 0.100000)
+  mat   = default
+}
+

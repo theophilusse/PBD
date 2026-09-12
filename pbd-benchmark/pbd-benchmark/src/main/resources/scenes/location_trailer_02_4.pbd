@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_trailer_02 xy=4x0
+# asset=location_trailer_02_4
+# property ItemHeight=22
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.211700, 0.186300, -0.461000)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.509600, 0.372600, 1.46580)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.174900, 0.388550, -0.462700)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.587200, 0.0943000, 1.46700)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.186100, 0.494550, -0.463900)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.469200, 0.0995000, 1.46600)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.391400, 0.804600, -0.464300)
+  rot   = (-180.0, -0.01970, -180.0)
+  scale = (0.154000, 0.723400, 1.46540)
+  mat   = default
+}
+

@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=lighting_indoor_02 xy=3x7
+# asset=lighting_indoor_02_59
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.244200, 1.20040, -0.0640000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.600000, 0.600000, 0.600000)
+  mat   = default
+}
+

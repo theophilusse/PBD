@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_01 xy=4x3
+# asset=recreational_01_28
+
+cube shape1 {
+  pos   = (0.175000, 0.590000, 0.140000)
+  scale = (1.25000, 1.18000, 0.720000)
+  mat   = default
+}
+

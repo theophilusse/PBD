@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=signs_church xy=2x3
+# asset=signs_church_26
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00110000, 0.760150, -0.477000)
+  scale = (0.406000, 1.52030, 1.95160)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=boulders xy=0x0
+# asset=boulders_0
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0100000, 0.200000, 0.0100000)
+  scale = (1.02000, 0.400000, 1.02000)
+  mat   = default
+}
+

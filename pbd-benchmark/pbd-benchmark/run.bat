@@ -1,0 +1,1 @@
+./gradlew run --args="src/main/resources/scenes/basic_primitives.pbd"

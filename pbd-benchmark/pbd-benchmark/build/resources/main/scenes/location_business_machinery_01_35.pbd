@@ -1,0 +1,34 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_machinery_01 xy=3x4
+# asset=location_business_machinery_01_35
+# property Surface=34
+
+cube shape1 {
+  pos   = (0.00340000, 0.488200, 0.00380000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.896000, 0.755800, 0.602800)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.264000, 0.0750000, 0.417500)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.150000, 0.0431000, 0.150000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.290400, 0.0750000, 0.413800)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.150000, 0.0431000, 0.150000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.300500, 0.0750000, -0.375800)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.150000, 0.0431000, 0.150000)
+  mat   = default
+}
+

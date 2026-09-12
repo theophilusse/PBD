@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=ramps_01 xy=7x2
+# asset=ramps_01_23
+
+cube shape1 {
+  pos   = (0.0134000, 0.00725000, 0.0139000)
+  scale = (1.02680, 0.0145000, 1.02780)
+  mat   = default
+}
+

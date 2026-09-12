@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_garage_02 xy=5x5
+# asset=walls_garage_02_45
+
+cube shape1 {
+  pos   = (0.00000, 2.07210, -0.476500)
+  scale = (1.00000, 0.754600, 0.0468000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.389900, 1.22470, -0.476500)
+  scale = (0.220000, 2.44940, 0.0468000)
+  mat   = default
+}
+

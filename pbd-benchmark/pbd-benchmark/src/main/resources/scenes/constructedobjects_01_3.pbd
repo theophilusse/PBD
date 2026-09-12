@@ -1,0 +1,27 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=constructedobjects_01 xy=3x0
+# asset=constructedobjects_01_3
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0147000, 0.350950, 0.0155000)
+  rot   = (0.000, 0.000, 27.40)
+  scale = (0.615400, 0.419700, 0.579000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.254700, 0.144800, 0.0203000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0534000, 0.289600, 0.0534000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.294500, 0.289300, 0.0199000)
+  rot   = (-90.00, 26.80, 0.000)
+  scale = (0.0434000, 0.161700, 0.0434000)
+  mat   = default
+}
+

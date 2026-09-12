@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pileocrepe_01 xy=4x4
+# asset=location_restaurant_pileocrepe_01_36
+# property Surface=34
+
+cube shape1 {
+  pos   = (0.00780000, 0.809850, -0.00780000)
+  scale = (0.997600, 0.100100, 1.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.0539000, 0.280500, -0.00780000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.0900000, 0.561000, 0.0900000)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_farm_accesories_01 xy=5x1
+# asset=location_farm_accesories_01_13
+
+cylinder shape1 {
+  pos   = (-0.0496000, 0.762900, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.440000, 1.52580, 0.440000)
+  mat   = default
+}
+

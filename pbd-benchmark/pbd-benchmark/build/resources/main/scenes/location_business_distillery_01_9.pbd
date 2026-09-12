@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_distillery_01 xy=1x1
+# asset=location_business_distillery_01_9
+
+cylinder shape1 {
+  pos   = (0.0780000, 0.360700, 0.0920000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.721600, 0.814300, 0.721600)
+  mat   = default
+}
+

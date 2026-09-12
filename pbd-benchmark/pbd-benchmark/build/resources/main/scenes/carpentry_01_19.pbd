@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=carpentry_01 xy=3x2
+# asset=carpentry_01_19
+# property OpaquePixelsOnly=true
+# property Surface=32
+
+cube shape1 {
+  pos   = (0.00000, 0.400000, 0.00000)
+  scale = (1.00000, 0.800000, 1.00000)
+  mat   = default
+}
+

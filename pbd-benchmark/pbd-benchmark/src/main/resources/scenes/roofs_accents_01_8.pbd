@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=roofs_accents_01 xy=0x1
+# asset=roofs_accents_01_8
+
+cube shape1 {
+  pos   = (-0.350000, 0.725000, -0.375000)
+  scale = (0.300000, 3.45000, 2.25000)
+  mat   = default
+}
+

@@ -1,0 +1,31 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=0x4
+# asset=location_community_medical_01_32
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0812000, 0.620650, -0.0667000)
+  scale = (0.713600, 0.205500, 0.866600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0812000, 0.538050, 0.355900)
+  rot   = (50.31, 0.000, 0.000)
+  scale = (0.713600, 0.156900, 0.274600)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.0204000, 0.256250, -0.253700)
+  scale = (0.530600, 0.512500, 0.492600)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00000, 0.00500000, 0.00000)
+  scale = (1.00000, 0.0100000, 1.00000)
+  mat   = default
+}
+

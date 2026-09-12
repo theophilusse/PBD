@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=radio_tower xy=0x10
+# asset=radio_tower_80
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0100000, 1.22475, 0.0100000)
+  scale = (0.620000, 2.44950, 0.620000)
+  mat   = default
+}
+

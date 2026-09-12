@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_ornamental_01 xy=3x0
+# asset=vegetation_ornamental_01_3
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.000400000, 0.809050, 0.0983000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.802200, 1.61810, 0.599000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.100500, 0.809050, -0.00540000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.592000, 1.61810, 0.801000)
+  mat   = default
+}
+

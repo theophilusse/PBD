@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=7x4
+# asset=location_community_medical_01_39
+
+cube shape1 {
+  pos   = (-0.0400000, 0.431150, -0.0378000)
+  scale = (0.904000, 0.862300, 0.939800)
+  mat   = default
+}
+

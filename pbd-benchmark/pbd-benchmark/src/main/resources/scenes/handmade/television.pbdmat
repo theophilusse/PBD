@@ -1,0 +1,12 @@
+material plastic011 {
+  color     = (0.04351, 0.04351, 0.04351)
+  shininess = 10
+  specular  = 0.1
+  texture   = plastic011.png
+}
+
+material glass {
+  color     = (0.1618, 0.2603, 0.2898)
+  shininess = 5
+  specular  = 1
+}

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_farm_01 xy=2x2
+# asset=vegetation_farm_01_18
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.000900000, 0.433850, -0.0397000)
+  scale = (1.00000, 0.867700, 0.920400)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=books&misc_02 xy=7x9
+# asset=books&misc_02_79
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0100000, 1.72500, 0.330000)
+  scale = (1.02000, 0.550000, 0.340000)
+  mat   = default
+}
+

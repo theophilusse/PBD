@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=carpentry_02 xy=3x10
+# asset=carpentry_02_83
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (-0.425800, 1.22470, -0.425500)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.200000, 2.44940, 0.200000)
+  mat   = default
+}
+

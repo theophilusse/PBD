@@ -1,0 +1,60 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_railroad_05 xy=7x6
+# asset=industry_railroad_05_55
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.118900, 0.0133000, 0.0414000)
+  scale = (0.762000, 0.0266000, 0.917000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0979000, 0.0135500, 0.0377000)
+  scale = (0.667800, 0.0271000, 0.677800)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.190500, 0.0372000, 0.0228000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.458200, 0.0744000, 0.0884000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.0313000, 0.0372000, 0.0227000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.458200, 0.0744000, 0.0884000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.0361000, 0.402150, -0.201100)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.109000, 0.145500, 0.0502000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.0321000, 0.356800, -0.0206000)
+  rot   = (-95.00, 0.000, 0.000)
+  scale = (0.0462000, 0.723300, 0.0462000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (0.0361000, 0.297600, -0.135100)
+  rot   = (-120.0, 0.000, 0.000)
+  scale = (0.0498000, 0.623300, 0.0498000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (0.0311000, 0.806500, -0.0626000)
+  rot   = (-95.00, 0.000, 0.000)
+  scale = (0.0802000, 0.180700, 0.0802000)
+  mat   = default
+}
+

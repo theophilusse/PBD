@@ -1,0 +1,97 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=5x14
+# asset=location_community_medical_01_117
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.727600, 0.0577000, 0.0391000)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.0414000, 0.115400, 0.0578000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.822500, 0.752300, -0.0299000)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.434400, 0.232600, 0.247600)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.432800, 1.88395, -0.286400)
+  rot   = (180.0, 78.21, -180.0)
+  scale = (0.0980000, 0.0551000, 0.884200)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.0457000, 1.77710, -0.375600)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.0676000, 0.159400, 0.0728000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.0458000, 1.65765, -0.385600)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.266200, 0.0799000, 0.434200)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (-0.809800, 1.07180, 0.146700)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.445600, 0.0426000, 0.0776000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-0.829500, 1.12590, 0.489600)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.335400, 0.150800, 0.210800)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (-0.860000, 0.457600, -0.0940000)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.307400, 0.683800, 0.322600)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (-0.999400, 0.0577000, 0.0302000)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.0588000, 0.115400, 0.0438000)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (-0.732900, 0.0577000, -0.231400)
+  rot   = (179.9, 89.98, -179.9)
+  scale = (0.0326000, 0.115400, 0.0684000)
+  mat   = default
+}
+
+cylinder shape11 {
+  pos   = (-0.810300, 1.36170, -0.180100)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.0744000, 0.987200, 0.0744000)
+  mat   = default
+}
+
+cylinder shape12 {
+  pos   = (-0.810300, 0.959200, -0.0346000)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.0744000, 0.182300, 0.0744000)
+  mat   = default
+}
+
+plane shape13 {
+  pos   = (-0.885200, 0.524300, 0.518700)
+  scale = (0.332400, 1, 0.622400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 20-point polygon, not its exact silhouette - see console output at conversion time
+}
+

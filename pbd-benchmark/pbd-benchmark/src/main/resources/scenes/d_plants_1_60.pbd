@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=d_plants_1 xy=4x7
+# asset=d_plants_1_60
+
+cube shape1 {
+  pos   = (0.00000, 0.210300, 0.00000)
+  scale = (1.00000, 0.420600, 1.00000)
+  mat   = default
+}
+

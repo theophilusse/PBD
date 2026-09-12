@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_police_01 xy=7x4
+# asset=location_community_police_01_39
+
+cube shape1 {
+  pos   = (-0.000100000, 1.22425, -0.303500)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.0762000, 2.44850, 1.00000)
+  mat   = default
+}
+

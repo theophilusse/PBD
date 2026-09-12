@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_entertainment_theatre_01 xy=7x16
+# asset=location_entertainment_theatre_01_135
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.275000, 0.600000, 0.200000)
+  scale = (0.450000, 1.20000, 1.20000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.275000, 0.660000, -0.425000)
+  scale = (0.450000, 1.32000, 0.0500000)
+  mat   = default
+}
+

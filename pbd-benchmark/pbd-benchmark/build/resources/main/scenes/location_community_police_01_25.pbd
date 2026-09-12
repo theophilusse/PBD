@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_police_01 xy=1x3
+# asset=location_community_police_01_25
+# property Surface=27
+
+cube shape1 {
+  pos   = (0.0228000, 0.403900, 0.535700)
+  scale = (0.953400, 0.172400, 1.85920)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0380000, 0.576800, 0.540400)
+  scale = (0.880600, 0.172400, 1.80420)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (-0.319400, 0.00000, 1.52770)
+  scale = (0.406000, 1, 0.280400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+

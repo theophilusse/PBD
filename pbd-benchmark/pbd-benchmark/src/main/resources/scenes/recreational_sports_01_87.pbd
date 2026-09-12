@@ -1,0 +1,25 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_sports_01 xy=7x10
+# asset=recreational_sports_01_87
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.457500, 0.900000, -0.125000)
+  scale = (0.915000, 1.00000, 0.0500000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.125000, 0.900000, 0.442500)
+  scale = (0.0500000, 1.00000, 0.885000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.141900, 0.700000, -0.121400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.340000, 1.40000, 0.340000)
+  mat   = default
+}
+

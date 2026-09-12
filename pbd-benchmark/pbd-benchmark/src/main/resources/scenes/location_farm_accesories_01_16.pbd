@@ -1,0 +1,24 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_farm_accesories_01 xy=0x2
+# asset=location_farm_accesories_01_16
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.175000, 1.47500, -0.175000)
+  scale = (1.25000, 1.95000, 0.650000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.395000, 0.265000, 0.0750000)
+  scale = (0.0500000, 0.470000, 0.0500000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.150000, 0.0150000, -0.175000)
+  scale = (1.30000, 0.0300000, 0.650000)
+  mat   = default
+}
+

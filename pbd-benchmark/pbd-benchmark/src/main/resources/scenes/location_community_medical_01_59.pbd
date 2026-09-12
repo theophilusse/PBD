@@ -1,0 +1,40 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=3x7
+# asset=location_community_medical_01_59
+
+cube shape1 {
+  pos   = (-0.237000, 0.323100, -0.0762000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.427400, 0.0886000, 0.522400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.236200, 0.573900, -0.388300)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.149800, 0.590200, 0.522400)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.477200, 0.456400, -0.0605000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.518200, 0.269600, 0.0734000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.0460000, 0.413600, -0.141100)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.518200, 0.269600, 0.0734000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (0.0205000, 0.183100, -0.0586000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.541400, 0.365800, 0.0734000)
+  mat   = default
+}
+

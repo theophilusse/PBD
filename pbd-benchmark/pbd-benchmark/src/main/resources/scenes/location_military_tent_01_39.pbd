@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_military_tent_01 xy=7x4
+# asset=location_military_tent_01_39
+
+cube shape1 {
+  pos   = (0.0425000, 2.42500, -0.350000)
+  scale = (0.985000, 0.150000, 0.200000)
+  mat   = default
+}
+

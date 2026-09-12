@@ -1,0 +1,48 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=camping_03 xy=6x0
+# asset=camping_03_6
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0136000, 0.0528500, -0.490200)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (1.78900, 0.105700, 0.737400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.101200, 0.814800, -0.620800)
+  rot   = (90.00, 39.99, -90.00)
+  scale = (1.78900, 0.103200, 2.01260)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.535300, 0.0247000, 0.277000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.409600, 0.0494000, 0.366600)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (-0.505200, 0.699100, -1.54940)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.0670000, 1.39810, 0.0670000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.438900, 1.05950, -0.300800)
+  rot   = (-180.0, 0.000, 90.02)
+  scale = (0.0670000, 2.16970, 0.0670000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (-0.506200, 0.699100, 0.291200)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.0670000, 1.39810, 0.0670000)
+  mat   = default
+}
+

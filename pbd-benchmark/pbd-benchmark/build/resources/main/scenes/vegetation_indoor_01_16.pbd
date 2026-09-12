@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=vegetation_indoor_01 xy=0x2
+# asset=vegetation_indoor_01_16
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00420000, 0.330850, -0.0245000)
+  scale = (0.888800, 0.661700, 0.872200)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (-0.0166000, 0.661800, 0.331400)
+  scale = (1.04980, 1, 0.675400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 5-point polygon, not its exact silhouette - see console output at conversion time
+}
+

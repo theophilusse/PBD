@@ -1,0 +1,37 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_television_01 xy=3x1
+# asset=appliances_television_01_11
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0497000, 0.480700, 0.218200)
+  scale = (0.794200, 0.566600, 0.406200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.368800, 0.106250, 0.399300)
+  scale = (0.0354000, 0.212500, 0.0272000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.286700, 0.106250, 0.396000)
+  scale = (0.0354000, 0.212500, 0.0272000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.306500, 0.106250, 0.0409000)
+  scale = (0.0354000, 0.212500, 0.0272000)
+  mat   = default
+}
+
+plane shape5 {
+  pos   = (-0.157200, 0.00000, 1.38620)
+  scale = (0.375000, 1, 0.523000)
+  mat   = default
+  # APPROXIMATION: bounding box of a 71-point polygon, not its exact silhouette - see console output at conversion time
+}
+

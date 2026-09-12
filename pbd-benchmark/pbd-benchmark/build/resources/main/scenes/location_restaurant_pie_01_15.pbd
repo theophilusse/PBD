@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pie_01 xy=7x1
+# asset=location_restaurant_pie_01_15
+
+cube shape1 {
+  pos   = (-0.426200, 1.02045, 0.00000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (1.00000, 2.04090, 0.0540000)
+  mat   = default
+}
+

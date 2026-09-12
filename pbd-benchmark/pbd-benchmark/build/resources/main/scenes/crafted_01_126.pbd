@@ -1,0 +1,41 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=crafted_01 xy=6x15
+# asset=crafted_01_126
+# property Translucent=true
+
+plane shape1 {
+  pos   = (-0.575650, 0.00000, 1.85290)
+  scale = (0.687500, 1, 1.34400)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape2 {
+  pos   = (0.267500, 0.00000, 1.01485)
+  scale = (0.687400, 1, 1.34410)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape3 {
+  pos   = (0.0171500, -0.000100000, 1.60475)
+  scale = (0.707100, 1, 1.34130)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape4 {
+  pos   = (-1.16440, -0.000900000, 1.61455)
+  scale = (0.698200, 1, 1.34530)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+
+plane shape5 {
+  pos   = (0.0100000, 0.00000, 0.425800)
+  scale = (0.686400, 1, 1.34860)
+  mat   = default
+  # APPROXIMATION: bounding box of a 3-point polygon, not its exact silhouette - see console output at conversion time
+}
+

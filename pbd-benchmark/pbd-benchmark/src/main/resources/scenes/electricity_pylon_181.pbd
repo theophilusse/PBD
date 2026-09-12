@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=electricity_pylon xy=5x22
+# asset=electricity_pylon_181
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0750000, 0.0750000, 0.100000)
+  scale = (0.750000, 0.150000, 0.700000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.0100000, 1.29975, 0.0350000)
+  scale = (0.620000, 2.29950, 0.570000)
+  mat   = default
+}
+

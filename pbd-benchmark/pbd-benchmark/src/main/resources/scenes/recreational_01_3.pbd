@@ -1,0 +1,61 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=recreational_01 xy=3x0
+# asset=recreational_01_3
+# property Surface=31
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.499900, 0.744200, -0.00100000)
+  scale = (1.65100, 0.0816000, 0.799200)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-1.38860, 0.795150, -0.00100000)
+  scale = (0.128200, 0.183500, 0.799200)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.388700, 0.795150, -0.00100000)
+  scale = (0.128200, 0.183500, 0.799200)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.515600, 0.795150, 0.449500)
+  scale = (1.93700, 0.183500, 0.100200)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.500300, 0.795150, -0.450400)
+  scale = (1.90620, 0.183500, 0.100200)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (-0.600700, 0.563150, -0.0829000)
+  scale = (1.92200, 0.279100, 1.01200)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-1.32070, 0.211500, 0.370000)
+  scale = (0.122800, 0.423000, 0.110800)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (0.291600, 0.211500, 0.370000)
+  scale = (0.122800, 0.423000, 0.110800)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (0.291600, 0.211500, -0.347700)
+  scale = (0.122800, 0.423000, 0.110800)
+  mat   = default
+}
+

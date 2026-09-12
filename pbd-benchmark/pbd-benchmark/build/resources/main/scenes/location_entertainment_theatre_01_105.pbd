@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_entertainment_theatre_01 xy=1x13
+# asset=location_entertainment_theatre_01_105
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.47475, -0.275000)
+  scale = (1.60000, 1.94950, 1.05000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.150100, 0.359900, 0.100400)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.160000, 0.400000, 0.160000)
+  mat   = default
+}
+

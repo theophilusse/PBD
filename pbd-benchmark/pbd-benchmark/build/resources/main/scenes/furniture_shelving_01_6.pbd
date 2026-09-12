@@ -1,0 +1,30 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_shelving_01 xy=6x0
+# asset=furniture_shelving_01_6
+# property Surface=61
+
+cube shape1 {
+  pos   = (0.290000, 0.775000, -0.185000)
+  scale = (0.420000, 0.150000, 0.530000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.290000, 1.47500, -0.185000)
+  scale = (0.420000, 0.150000, 0.530000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00000, 0.775000, 0.290000)
+  scale = (1.00000, 0.150000, 0.420000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (0.00000, 1.47500, 0.290000)
+  scale = (1.00000, 0.150000, 0.420000)
+  mat   = default
+}
+

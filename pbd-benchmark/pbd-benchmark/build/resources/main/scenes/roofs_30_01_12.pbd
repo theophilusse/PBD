@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=roofs_30_01 xy=4x1
+# asset=roofs_30_01_12
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.00620000, 0.627200, -0.00910000)
+  rot   = (90.00, 67.41, -90.00)
+  scale = (1.01820, 0.0648000, 1.08720)
+  mat   = default
+}
+

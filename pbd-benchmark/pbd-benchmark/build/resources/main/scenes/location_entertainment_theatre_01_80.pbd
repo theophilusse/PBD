@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_entertainment_theatre_01 xy=0x10
+# asset=location_entertainment_theatre_01_80
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (-0.425000, 1.10000, 0.0500000)
+  scale = (0.0500000, 1.20000, 0.700000)
+  mat   = default
+}
+

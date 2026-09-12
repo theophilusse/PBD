@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_military_knox_01 xy=0x2
+# asset=location_military_knox_01_16
+
+cube shape1 {
+  pos   = (0.00000, 0.825000, 0.00000)
+  scale = (1.00000, 1.65000, 1.00000)
+  mat   = default
+}
+

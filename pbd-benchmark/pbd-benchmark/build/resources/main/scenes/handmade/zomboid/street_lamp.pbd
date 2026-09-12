@@ -1,0 +1,22 @@
+pbd_version 1
+
+cylinder lamp_pole {
+  pos   = (0, 1.5, -6.55671e-08)
+  scale = (0.06, 3, 0.06)
+  mat   = metal_dark
+}
+
+cone lamp_head {
+  pos   = (0, 0.55, -2.40413e-08)
+  rot   = (-180, -0, 0)
+  scale = (4.16667, 0.1, 4.16667)
+  parent = lamp_pole
+  mat   = metal_dark
+}
+
+sphere lamp_bulb {
+  pos   = (0, 0.516667, -2.25842e-08)
+  scale = (2.33333, 0.0466667, 2.33333)
+  parent = lamp_pole
+  mat   = glass_glow
+}

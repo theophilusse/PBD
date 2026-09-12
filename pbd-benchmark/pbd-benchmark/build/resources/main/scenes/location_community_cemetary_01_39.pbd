@@ -1,0 +1,17 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_cemetary_01 xy=7x4
+# asset=location_community_cemetary_01_39
+
+cube shape1 {
+  pos   = (-0.00850000, 0.462700, -0.377100)
+  scale = (0.101200, 0.953000, 0.0698000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.00910000, 0.600500, -0.376700)
+  scale = (0.614000, 0.155200, 0.0550000)
+  mat   = default
+}
+

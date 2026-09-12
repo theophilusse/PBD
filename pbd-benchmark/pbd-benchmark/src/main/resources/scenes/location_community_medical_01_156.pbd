@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_community_medical_01 xy=4x19
+# asset=location_community_medical_01_156
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 1.22475, -0.290000)
+  scale = (1.00000, 2.44950, 0.0200000)
+  mat   = default
+}
+

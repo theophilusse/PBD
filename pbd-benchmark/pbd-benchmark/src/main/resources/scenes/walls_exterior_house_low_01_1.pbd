@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=walls_exterior_house_low_01 xy=1x0
+# asset=walls_exterior_house_low_01_1
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0150000, 0.500000, -0.465000)
+  scale = (1.00000, 1.00000, 0.0700000)
+  mat   = default
+}
+

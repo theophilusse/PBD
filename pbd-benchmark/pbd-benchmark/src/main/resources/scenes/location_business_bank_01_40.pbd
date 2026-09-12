@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_business_bank_01 xy=0x5
+# asset=location_business_bank_01_40
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.425000, 1.22475, 0.00000)
+  scale = (0.0500000, 2.44950, 1.20000)
+  mat   = default
+}
+

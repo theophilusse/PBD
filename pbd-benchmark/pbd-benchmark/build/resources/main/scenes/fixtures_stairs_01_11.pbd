@@ -1,0 +1,96 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_stairs_01 xy=3x1
+# asset=fixtures_stairs_01_11
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0370000, 0.130150, 0.337700)
+  scale = (1.00000, 0.114500, 0.308600)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.0372000, 0.364400, 0.101700)
+  scale = (1.00000, 0.0850000, 0.335200)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (0.00780000, 0.632050, -0.0659000)
+  scale = (1.00000, 0.0945000, 0.322000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.00610000, 0.810800, -0.353700)
+  scale = (1.00000, 0.0840000, 0.343000)
+  mat   = default
+}
+
+cube shape5 {
+  pos   = (-0.0506000, 0.920900, -0.595000)
+  scale = (1.00000, 0.0840000, 0.0760000)
+  mat   = default
+}
+
+cube shape6 {
+  pos   = (0.428200, 0.0434500, 0.475100)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape7 {
+  pos   = (-0.447000, 0.0434500, 0.475100)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape8 {
+  pos   = (-0.447000, 0.253550, 0.224100)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape9 {
+  pos   = (0.426800, 0.253550, 0.224100)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape10 {
+  pos   = (-0.447000, 0.470250, -0.0256000)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape11 {
+  pos   = (0.426800, 0.470250, -0.0256000)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape12 {
+  pos   = (-0.447000, 0.669750, -0.276400)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape13 {
+  pos   = (0.425900, 0.675550, -0.276400)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape14 {
+  pos   = (-0.447000, 0.882250, -0.526700)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+
+cube shape15 {
+  pos   = (0.424500, 0.882250, -0.526700)
+  scale = (0.0318000, 0.0869000, 0.0312000)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_doors_02 xy=2x5
+# asset=fixtures_doors_02_42
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0936000, 0.982300, -0.265600)
+  scale = (0.796800, 1.96460, 0.0780000)
+  mat   = default
+}
+

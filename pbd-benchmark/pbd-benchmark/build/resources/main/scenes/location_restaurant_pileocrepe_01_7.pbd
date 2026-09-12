@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pileocrepe_01 xy=7x0
+# asset=location_restaurant_pileocrepe_01_7
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.142700, 1.80255, -0.134400)
+  scale = (0.714400, 1.29370, 1.26880)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.0692000, 0.561300, 0.0165000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.210000, 1.12260, 0.210000)
+  mat   = default
+}
+

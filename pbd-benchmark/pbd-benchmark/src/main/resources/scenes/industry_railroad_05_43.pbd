@@ -1,0 +1,11 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=industry_railroad_05 xy=3x5
+# asset=industry_railroad_05_43
+
+cube shape1 {
+  pos   = (-0.465000, 0.610000, -0.465000)
+  scale = (0.0700000, 1.22000, 0.0700000)
+  mat   = default
+}
+

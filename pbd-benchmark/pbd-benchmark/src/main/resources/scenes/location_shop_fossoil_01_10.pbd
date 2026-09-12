@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_fossoil_01 xy=2x1
+# asset=location_shop_fossoil_01_10
+# property ItemHeight=26
+# property Surface=33
+
+cube shape1 {
+  pos   = (0.0900000, 1.20000, -0.125000)
+  scale = (0.780000, 0.600000, 0.450000)
+  mat   = default
+}
+

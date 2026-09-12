@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_bar_01 xy=0x1
+# asset=location_restaurant_bar_01_8
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00000, 0.627400, 0.399800)
+  scale = (1.00000, 1.25480, 0.200200)
+  mat   = default
+}
+

@@ -1,0 +1,19 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_trailer_01 xy=2x7
+# asset=location_trailer_01_58
+# property OpaquePixelsOnly=true
+
+cube shape1 {
+  pos   = (-0.476500, 0.100450, 0.00000)
+  scale = (0.0468000, 0.200900, 1.00000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (-0.523850, 0.201400, 0.0194500)
+  scale = (0.148900, 1, 1.04590)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

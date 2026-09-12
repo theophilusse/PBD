@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_refrigeration_01 xy=5x5
+# asset=appliances_refrigeration_01_45
+# property Surface=78
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.219500, 0.993700, 0.561500)
+  scale = (0.582800, 1.98740, 1.55980)
+  mat   = default
+}
+

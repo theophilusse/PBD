@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_laundry_01 xy=4x3
+# asset=appliances_laundry_01_28
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00250000, 2.09740, -0.566400)
+  scale = (0.0930000, 0.379000, 1.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.00000, 1.22470, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.132000, 2.44940, 0.132000)
+  mat   = default
+}
+
+plane shape3 {
+  pos   = (-0.0349000, 2.44970, 0.0426500)
+  scale = (0.164000, 1, 0.179500)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

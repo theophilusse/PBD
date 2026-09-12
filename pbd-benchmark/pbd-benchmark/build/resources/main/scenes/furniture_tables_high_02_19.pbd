@@ -1,0 +1,90 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=furniture_tables_high_02 xy=3x2
+# asset=furniture_tables_high_02_19
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.000200000, 0.681750, -1.00890)
+  rot   = (0.1437, -89.98, 0.1438)
+  scale = (2.85920, 0.0719000, 0.969400)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (0.00000, 0.588600, -1.01530)
+  rot   = (0.1437, -89.98, 0.1438)
+  scale = (2.75480, 0.113000, 0.876200)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.347500, 0.0935000, 0.315800)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.187000, 0.0600000)
+  mat   = default
+}
+
+cylinder shape4 {
+  pos   = (0.277000, 0.0934000, 0.316000)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.186900, 0.0600000)
+  mat   = default
+}
+
+cylinder shape5 {
+  pos   = (-0.252400, 0.340900, 0.315400)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.339600, 0.0600000)
+  mat   = default
+}
+
+cylinder shape6 {
+  pos   = (0.199300, 0.341000, 0.314900)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.340000, 0.0600000)
+  mat   = default
+}
+
+cylinder shape7 {
+  pos   = (-0.0298000, 0.180200, 0.314900)
+  rot   = (-55.71, 89.98, 55.71)
+  scale = (0.0600000, 0.623200, 0.0600000)
+  mat   = default
+}
+
+cylinder shape8 {
+  pos   = (0.000500000, 0.180200, -2.39610)
+  rot   = (-55.71, 89.98, 55.71)
+  scale = (0.0600000, 0.583200, 0.0600000)
+  mat   = default
+}
+
+cylinder shape9 {
+  pos   = (0.276800, 0.0935000, -2.36320)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.187000, 0.0600000)
+  mat   = default
+}
+
+cylinder shape10 {
+  pos   = (0.215100, 0.296900, -2.36310)
+  rot   = (-90.00, 0.000, -90.00)
+  scale = (0.0600000, 0.150000, 0.0600000)
+  mat   = default
+}
+
+cylinder shape11 {
+  pos   = (-0.0381000, 0.181400, -2.15780)
+  rot   = (0.000, -44.98, 0.000)
+  scale = (0.0600000, 0.668100, 0.0600000)
+  mat   = default
+}
+
+cylinder shape12 {
+  pos   = (-0.188700, 0.179700, 0.140600)
+  rot   = (0.000, -45.00, 0.000)
+  scale = (0.0600000, 0.364600, 0.0600000)
+  mat   = default
+}
+

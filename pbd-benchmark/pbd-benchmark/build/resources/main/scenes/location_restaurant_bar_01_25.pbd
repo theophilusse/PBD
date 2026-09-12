@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_bar_01 xy=1x3
+# asset=location_restaurant_bar_01_25
+# property Surface=28
+
+cylinder shape1 {
+  pos   = (0.00000, 0.355000, -0.0250000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.600000, 0.710000, 0.600000)
+  mat   = default
+}
+

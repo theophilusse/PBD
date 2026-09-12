@@ -1,0 +1,14 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_shop_accessories_01 xy=0x1
+# asset=location_shop_accessories_01_8
+# property ItemHeight=32
+# property Surface=35
+
+cube shape1 {
+  pos   = (0.00530000, 1.30110, -0.202200)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.499400, 0.772200, 0.754800)
+  mat   = default
+}
+

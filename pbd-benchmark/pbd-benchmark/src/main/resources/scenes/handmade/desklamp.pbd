@@ -1,0 +1,31 @@
+pbd_version 1
+include_material desklamp.pbdmat
+
+# WARNING - please check before using this file:
+#   'sphere.001': the mesh is about -1.00x the native Blender size expected for a sphere - check that it wasn't resized in Edit Mode, or that a modifier (Bevel, Subdivision...) isn't changing its bounding box.
+
+sphere sphere {
+  pos   = (0, 0.2, -8.74228e-09)
+  scale = (0.4, 0.4, 0.4)
+  mat   = wood066
+}
+
+cylinder cylinder {
+  pos   = (0, 0.42, -1.83588e-08)
+  scale = (0.07, 0.07, 0.07)
+  mat   = plastic011
+  cap   = top
+}
+
+cylinder cover {
+  pos   = (0, 0.592505, -2.58992e-08)
+  scale = (0.350519, 0.350519, 0.350519)
+  mat   = fabric045
+  cap   = none
+}
+
+sphere sphere.001 {
+  pos   = (0, 0.489916, -2.14149e-08)
+  scale = (-0.11244, -0.11244, -0.11244)
+  mat   = glass
+}

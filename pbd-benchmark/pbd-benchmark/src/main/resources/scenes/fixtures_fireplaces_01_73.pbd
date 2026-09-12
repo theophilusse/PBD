@@ -1,0 +1,27 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=fixtures_fireplaces_01 xy=1x9
+# asset=fixtures_fireplaces_01_73
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.00780000, 2.14380, 0.0320000)
+  rot   = (180.0, 89.98, -180.0)
+  scale = (0.704200, 0.160000, 0.676000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.206100, 2.33920, 0.0474000)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.240000, 0.256200, 0.240000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (-0.155100, 2.33920, 0.0491000)
+  rot   = (-90.00, 0.000, 90.00)
+  scale = (0.240000, 0.256200, 0.240000)
+  mat   = default
+}
+

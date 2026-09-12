@@ -1,0 +1,26 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=f_bushes_1 xy=4x12
+# asset=f_bushes_1_100
+
+cylinder shape1 {
+  pos   = (0.00000, 0.527600, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (1.00000, 1.05510, 1.00000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-0.298000, 0.552600, 0.00000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (1.00000, 1.10520, 1.00000)
+  mat   = default
+}
+
+cylinder shape3 {
+  pos   = (0.00000, 0.561300, -0.292100)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (1.00000, 1.12250, 1.00000)
+  mat   = default
+}
+

@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pizzawhirled_01 xy=4x1
+# asset=location_restaurant_pizzawhirled_01_12
+# property UseObjectDepthTexture=true
+
+cube shape1 {
+  pos   = (-0.450000, 1.25000, 0.00000)
+  scale = (0.100000, 2.50000, 1.20000)
+  mat   = default
+}
+

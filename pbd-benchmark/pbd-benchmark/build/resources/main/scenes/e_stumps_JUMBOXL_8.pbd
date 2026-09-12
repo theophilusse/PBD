@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=e_stumps_JUMBOXL xy=0x1
+# asset=e_stumps_JUMBOXL_8
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.0110000, 0.200000, 0.0345000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.400000, 0.400000, 0.400000)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (0.0110000, 0.0100000, 0.0345000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (1.00000, 0.0200000, 1.00000)
+  mat   = default
+}
+

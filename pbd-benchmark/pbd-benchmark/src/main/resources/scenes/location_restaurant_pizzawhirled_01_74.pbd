@@ -1,0 +1,18 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=location_restaurant_pizzawhirled_01 xy=2x9
+# asset=location_restaurant_pizzawhirled_01_74
+
+cube shape1 {
+  pos   = (-1.09510, 1.66650, -0.320100)
+  scale = (2.04800, 1.56580, 0.359600)
+  mat   = default
+}
+
+cylinder shape2 {
+  pos   = (-1.03840, 0.491300, -0.101000)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.177000, 0.981900, 0.177000)
+  mat   = default
+}
+
