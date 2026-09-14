@@ -1,9 +1,0 @@
-material fabric045 {
-  color     = (0.7, 0.7, 0.7)
-  shininess = 8
-  specular  = 0.1
-  texture   = fabric045.png
-  normalMap = fabric045_normalgl.png
-  roughnessMap = fabric045_roughness.png
-  transparency = 0.21
-}

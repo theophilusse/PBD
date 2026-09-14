@@ -1,8 +1,0 @@
-material wood066 {
-  color     = (0.4245, 0.1643, 0.03043)
-  shininess = 0
-  specular  = 0.1
-  texture   = wood066.png
-  normalMap = wood066_normalgl.png
-  roughnessMap = wood066_roughness.png
-}

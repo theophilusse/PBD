@@ -1,8 +1,0 @@
-material plastic011 {
-  color     = (0.04351, 0.04351, 0.04351)
-  shininess = 10
-  specular  = 0.1
-  texture   = plastic011.png
-  normalMap = plastic011_normalgl.png
-  roughnessMap = plastic011_roughness.png
-}

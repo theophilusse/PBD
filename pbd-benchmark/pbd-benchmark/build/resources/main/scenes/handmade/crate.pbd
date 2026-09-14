@@ -1,8 +1,0 @@
-pbd_version 1
-include_material crate.pbdmat
-
-cube crate {
-  pos   = (0, 0.95, -4.15258e-08)
-  scale = (1.9, 1.9, 1.9)
-  mat   = crateWood
-}

@@ -1,6 +1,0 @@
-material crateWood {
-  color     = (0.3705, 0.1088, 0.05716)
-  shininess = 8
-  specular  = 0
-  texture   = crate.png
-}

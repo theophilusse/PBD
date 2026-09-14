@@ -1,8 +1,0 @@
-pbd_version 1
-
-cylinder cylinder {
-  pos   = (0, 0, 0)
-  scale = (2, 2, 2)
-  mat   = default
-  cap   = top
-}

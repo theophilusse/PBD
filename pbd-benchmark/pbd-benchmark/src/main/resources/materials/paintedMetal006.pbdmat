@@ -1,8 +1,0 @@
-material paintedMetal006 {
-  color     = (0.03941, 0.2607, 0.01878)
-  shininess = 8
-  specular  = 0.3
-  texture   = paintedMetal006.png
-  normalMap = paintedMetal006_normalgl.png
-  roughnessMap = paintedMetal006_roughness.png
-}

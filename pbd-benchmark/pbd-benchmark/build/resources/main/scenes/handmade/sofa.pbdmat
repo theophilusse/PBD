@@ -1,8 +1,0 @@
-material leather {
-  color     = (0.7005, 0.6274, 0.3274)
-  shininess = 8
-  specular  = 0.55
-  texture   = leather035.png
-  normalMap = leather035_normalgl.png
-  roughnessMap = leather035_roughness.png
-}
