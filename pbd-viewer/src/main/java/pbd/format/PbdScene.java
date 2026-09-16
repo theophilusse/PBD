@@ -22,6 +22,7 @@ public final class PbdScene {
     public String kind;                      // a free-form category ("furniture", "container", "decoration") - not validated against a fixed list, since new kinds will keep appearing as the format's used for more asset types
     public final List<String> authors = new ArrayList<>(); // every author=X line, in file order - a plain single field would lose all but the last of several credited authors
     public String origin;                    // the URL this file was fetched from, if any - see PbdFetcher for how this drives caching (a file with no origin was authored locally, not downloaded)
+    public String description;               // free-form, searchable text (see server/search.php) - documented in PBD_FORMAT_SPEC.md as optional scene metadata; added here alongside readMetadataValue's own fix so writing it doesn't crash the parser the same way an unquoted multi-word kind= did
 
     // The RAW (as-written, still relative) include_material= value, if
     // the file had one - kept alongside the already-parsed

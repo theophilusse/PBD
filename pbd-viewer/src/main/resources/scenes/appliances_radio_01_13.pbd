@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_radio_01 xy=5x1
+# asset=appliances_radio_01_13
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.0654000, 0.107600, -0.0226000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.314800, 0.215200, 0.248200)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (0.177050, 0.00000, 0.276400)
+  scale = (0.0313000, 1, 0.165800)
+  mat   = default
+  # APPROXIMATION: bounding box of a 4-point polygon, not its exact silhouette - see console output at conversion time
+}
+

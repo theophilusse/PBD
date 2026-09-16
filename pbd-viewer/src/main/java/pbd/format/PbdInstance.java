@@ -40,6 +40,35 @@ public final class PbdInstance {
     // structural fact about HOW an instance is built, not what it
     // represents.
     public String category;
+    // Voxel/destruction system fields (see docs/PBD_FORMAT_SPEC.md's
+    // own "Voxel destruction" section). indestructible=true means this
+    // instance is never converted to voxels by whatever runtime
+    // primitive->voxel transform exists (see pbd.voxel.PrimitiveVoxelizer)
+    // and never affected by alterations to nearby voxelized geometry -
+    // a wall or floor an author wants to guarantee stays solid
+    // regardless of what happens around it, not something dynamically
+    // computed from geometry or material. hardness/resistance are
+    // OPTIONAL physical parameters, meaningful only alongside
+    // indestructible=true (see PbdParser's own validation) - nullable
+    // rather than defaulted to some arbitrary number, since "no value
+    // given" and "explicitly zero" are different things a destruction
+    // system might reasonably want to distinguish between.
+    public boolean indestructible = false;
+    public Float hardness;   // nullable
+    public Float resistance; // nullable
+    // Light source parameters - meaningful only when type.equals("light")
+    // (see PrimitiveRegistry/PbdParser for how "light" is recognized as
+    // its own primitive type, same category as "ref": no geometry of
+    // its own, purely a data-carrying instance that affects how OTHER
+    // geometry gets lit). Nullable/null-default rather than defaulted
+    // to some arbitrary "on" value, so a non-light instance's fields
+    // stay visibly unset rather than carrying meaningless zeros.
+    public String lightMode;      // "point" or "spot" - null if this instance isn't a light at all
+    public boolean lightEnabled = true; // runtime on/off (a light switch, say) - kept separate from lightIntensity so toggling off and back on doesn't lose the authored brightness
+    public Vector3f lightColor;   // rgb, 0..1 each - null if not a light
+    public Float lightIntensity;  // arbitrary brightness scale, no fixed unit (matches shininess/specularStrength's own "authored, not physical" convention)
+    public Float lightRange;      // world units - distance at which this light's contribution reaches zero
+    public Float lightSpotAngleDeg; // half-angle of the cone, degrees - only meaningful for lightMode="spot"
     public int parentIndex = -1;           // filled in by PbdScene.resolveHierarchy(), -1 = root
 
     public final Vector3f position = new Vector3f();

@@ -32,6 +32,23 @@ public final class PbdFetcher {
 
     public static final String USER_AGENT = "PrimitiveBasedDescription (pbd.mazetrojan.fr)";
 
+    // Hosts that don't need the Yes/No prompt below - the project's own
+    // asset database. Anything else triggers it: a scene composed from
+    // pbd_ref/include_material entries can point at ANY server a file's
+    // author chose to write in, and nothing stops a hostile or just
+    // careless file from naming somewhere that serves malware under a
+    // filename this project would happily cache and load - this is a
+    // consent gate on the network request that names WHERE the file is
+    // actually about to go fetch from, in front of the person actually
+    // running it, not a content scan (which this project makes no
+    // attempt to do at all).
+    private static final java.util.Set<String> TRUSTED_HOSTS = java.util.Set.of("pbd.mazetrojan.fr");
+    // Approved for this JVM run only, per distinct host - so a scene
+    // with many references to the SAME third-party server only prompts
+    // once, not once per file, without persisting a "trust this
+    // forever" decision anywhere on disk.
+    private static final java.util.Set<String> approvedThisSession = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private static final HttpClient CLIENT = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NEVER)
         .connectTimeout(Duration.ofSeconds(10))
@@ -41,6 +58,49 @@ public final class PbdFetcher {
         public FetchException(String message) {
             super(message);
         }
+    }
+
+    /** True if the person running this actually agreed to fetch from
+     * url's host - always true for TRUSTED_HOSTS, otherwise prints a
+     * clear warning naming the exact host and reads a y/n answer from
+     * stdin (this is a GLFW/OpenGL application with no dialog system of
+     * its own, and asset resolution happens before any window exists
+     * anyway - the terminal this was launched from is the only UI
+     * available at this point). Denying, an unparseable answer, or no
+     * console/stdin available at all (e.g. running fully detached) all
+     * mean no - refusing by default rather than assuming consent is the
+     * only safe default for a network fetch the file itself asked for,
+     * not the person. */
+    private static boolean isApprovedToFetch(String url) {
+        String host;
+        try {
+            host = URI.create(url).getHost();
+        } catch (IllegalArgumentException e) {
+            return false; // can't even parse a host out of it - definitely not proceeding
+        }
+        if (host == null || TRUSTED_HOSTS.contains(host)) return true;
+        if (approvedThisSession.contains(host)) return true;
+
+        System.out.println();
+        System.out.println("[PbdFetcher] This scene references a resource on '" + host + "',");
+        System.out.println("             which is NOT " + String.join(", ", TRUSTED_HOSTS) + ".");
+        System.out.println("             Full URL: " + url);
+        System.out.print("             Download from this host? [y/N]: ");
+        System.out.flush();
+        String answer;
+        try {
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
+            answer = reader.readLine();
+        } catch (IOException e) {
+            answer = null;
+        }
+        boolean approved = answer != null && (answer.trim().equalsIgnoreCase("y") || answer.trim().equalsIgnoreCase("yes"));
+        if (approved) {
+            approvedThisSession.add(host);
+        } else {
+            System.out.println("             Denied - this resource will not be downloaded.");
+        }
+        return approved;
     }
 
     /**
@@ -85,6 +145,9 @@ public final class PbdFetcher {
     }
 
     private static Path doFetch(String url, Path cachePath) throws FetchException {
+        if (!isApprovedToFetch(url)) {
+            throw new FetchException("Fetch of '" + url + "' was not approved (untrusted host, denied or no answer given)");
+        }
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder()

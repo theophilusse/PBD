@@ -88,10 +88,11 @@ public final class PbdParser {
             String keyword = readIdentifier();
             switch (keyword) {
                 case "pbd_version" -> readRawValue(); // value ignored for now, just consumed
-                case "name" -> { expect('='); scene.name = readRawValue(); }
-                case "kind" -> { expect('='); scene.kind = readRawValue(); }
-                case "author" -> { expect('='); scene.authors.add(readRawValue()); }
-                case "origin" -> { expect('='); scene.origin = readRawValue(); }
+                case "name" -> { expect('='); scene.name = readMetadataValue(); }
+                case "kind" -> { expect('='); scene.kind = readMetadataValue(); }
+                case "author" -> { expect('='); scene.authors.add(readMetadataValue()); }
+                case "origin" -> { expect('='); scene.origin = readMetadataValue(); }
+                case "description" -> { expect('='); scene.description = readMetadataValue(); }
                 case "curve" -> scene.addCurve(parseCurve());
                 case "pbd_ref" -> parsePbdRef(scene);
                 case "include_material" -> parseIncludeMaterial(scene);
@@ -186,6 +187,55 @@ public final class PbdParser {
                 }
             }
             case "category" -> instance.category = rawValue;
+            case "indestructible" -> instance.indestructible = Boolean.parseBoolean(rawValue.trim());
+            case "hardness" -> {
+                try {
+                    instance.hardness = Float.parseFloat(rawValue.trim());
+                } catch (NumberFormatException e) {
+                    throw error("hardness must be a number, got '" + rawValue + "'");
+                }
+            }
+            case "resistance" -> {
+                try {
+                    instance.resistance = Float.parseFloat(rawValue.trim());
+                } catch (NumberFormatException e) {
+                    throw error("resistance must be a number, got '" + rawValue + "'");
+                }
+            }
+            case "lightMode" -> {
+                if (!rawValue.equals("point") && !rawValue.equals("spot")) {
+                    throw error("lightMode must be 'point' or 'spot', got '" + rawValue + "'");
+                }
+                instance.lightMode = rawValue;
+            }
+            case "lightEnabled" -> {
+                if (!rawValue.equals("true") && !rawValue.equals("false")) {
+                    throw error("lightEnabled must be 'true' or 'false', got '" + rawValue + "'");
+                }
+                instance.lightEnabled = Boolean.parseBoolean(rawValue);
+            }
+            case "lightColor" -> instance.lightColor = parseVec3(rawValue);
+            case "lightIntensity" -> {
+                try {
+                    instance.lightIntensity = Float.parseFloat(rawValue.trim());
+                } catch (NumberFormatException e) {
+                    throw error("lightIntensity must be a number, got '" + rawValue + "'");
+                }
+            }
+            case "lightRange" -> {
+                try {
+                    instance.lightRange = Float.parseFloat(rawValue.trim());
+                } catch (NumberFormatException e) {
+                    throw error("lightRange must be a number, got '" + rawValue + "'");
+                }
+            }
+            case "lightSpotAngle" -> {
+                try {
+                    instance.lightSpotAngleDeg = Float.parseFloat(rawValue.trim());
+                } catch (NumberFormatException e) {
+                    throw error("lightSpotAngle must be a number, got '" + rawValue + "'");
+                }
+            }
             case "containerTrigger" -> instance.containerTriggers.add(rawValue);
             case "vertexData" -> {
                 String encoded = rawValue.startsWith("base64:") ? rawValue.substring(7) : rawValue;
@@ -306,6 +356,7 @@ public final class PbdParser {
         String parentId = null;
         Integer lod = null;
         String category = null;
+        String matOverride = null;
 
         skipWhitespaceAndComments();
         while (peek() != '}') {
@@ -331,6 +382,14 @@ public final class PbdParser {
                     }
                 }
                 case "category" -> category = raw;
+                // Overrides EVERY instance's own mat= inside the
+                // referenced sub-scene, applied once below after that
+                // sub-scene has been fully parsed and merged in -
+                // recolor/re-skin a whole imported prop without editing
+                // its own source file (or every one of its instances
+                // individually) just to change which materials it uses
+                // in THIS particular placement.
+                case "mat" -> matOverride = raw;
                 default -> throw error("Unknown pbd_ref field: '" + key + "'");
             }
             skipWhitespaceAndComments();
@@ -428,7 +487,7 @@ public final class PbdParser {
             copy.position.set(sub.position);
             copy.rotation.set(sub.rotation);
             copy.scale.set(sub.scale);
-            copy.material = sub.material;
+            copy.material = matOverride != null ? matOverride : sub.material;
             copy.modifiers.addAll(sub.modifiers);
             copy.params.putAll(sub.params);
             copy.parentId = (sub.parentId == null) ? refId : prefix + sub.parentId;
@@ -441,7 +500,17 @@ public final class PbdParser {
     private void parseIncludeMaterial(PbdScene scene) {
         String rawPath = readRawValue();
         Path resolved;
+        // Non-null exactly when the .pbdmat ITSELF was fetched from a
+        // URL rather than found on local disk - a texture= filename
+        // inside such a .pbdmat is relative to THIS, not to resolved's
+        // local cache-file location (which is just an implementation
+        // detail of where PbdFetcher happened to stash the download,
+        // never meant to be resolved against as if it were the
+        // content's real home - same reasoning as pbd_ref's own
+        // isRemote/subUrl split elsewhere in this file).
+        String matUrl = null;
         if (isUrl(rawPath)) {
+            matUrl = rawPath;
             try {
                 resolved = pbd.net.PbdFetcher.fetch(rawPath, PbdPaths.REMOTE_CACHE_DIR, null, true);
             } catch (IOException e) {
@@ -458,11 +527,11 @@ public final class PbdParser {
             // does - a remote scene can't have a LOCAL file sitting next
             // to it on disk, only a sibling resource at the same remote
             // location.
-            String resolvedUrl = java.net.URI.create(baseUrl).resolve(rawPath).toString();
+            matUrl = java.net.URI.create(baseUrl).resolve(rawPath).toString();
             try {
-                resolved = pbd.net.PbdFetcher.fetch(resolvedUrl, PbdPaths.REMOTE_CACHE_DIR, null, true);
+                resolved = pbd.net.PbdFetcher.fetch(matUrl, PbdPaths.REMOTE_CACHE_DIR, null, true);
             } catch (IOException e) {
-                throw error("include_material could not fetch '" + resolvedUrl + "': " + e.getMessage());
+                throw error("include_material could not fetch '" + matUrl + "': " + e.getMessage());
             }
         } else {
             if (baseDir == null) {
@@ -476,7 +545,23 @@ public final class PbdParser {
             for (Map<String, String> fields : loaded.values()) {
                 for (String key : new String[]{"texture", "normalMap", "roughnessMap", "displacementMap"}) {
                     String filename = fields.get(key);
-                    if (filename != null) {
+                    if (filename == null) continue;
+                    if (matUrl != null) {
+                        // The .pbdmat naming this texture came from a
+                        // URL, so the texture filename - same as any
+                        // OTHER relative reference inside remotely-
+                        // fetched content - is relative to THAT URL, not
+                        // any local directory, and needs its own fetch,
+                        // not a local Files.exists() check.
+                        String textureUrl = java.net.URI.create(matUrl).resolve(filename).toString();
+                        try {
+                            Path texPath = pbd.net.PbdFetcher.fetch(textureUrl, PbdPaths.REMOTE_CACHE_DIR, null, true);
+                            fields.put(key, texPath.toString());
+                        } catch (IOException e) {
+                            throw error("include_material's " + key + "='" + filename + "' (resolved to '"
+                                + textureUrl + "') could not be fetched: " + e.getMessage());
+                        }
+                    } else {
                         fields.put(key, resolveTexturePath(filename, resolved.getParent()).toString());
                     }
                 }
@@ -543,6 +628,34 @@ public final class PbdParser {
         } else {
             while (!atEnd() && !isStructural(peek()) && !Character.isWhitespace(peek())) pos++;
         }
+        return src.substring(start, pos).trim();
+    }
+
+    /** Same quoted-string handling as readRawValue (unchanged - a
+     * quoted "interior electric decoration" already worked correctly
+     * before this existed), but an UNQUOTED value reads to the end of
+     * the line rather than stopping at the first whitespace. Only used
+     * for the free-form scene-metadata fields (name/kind/author/
+     * origin/description) - every other field readRawValue alone
+     * handles (mat=, a numeric field, ...) is a single TOKEN by design,
+     * where stopping at whitespace is exactly the correct behavior,
+     * not a bug to fix the same way.
+     *
+     * Added after a real, reported crash: `kind = interior electric
+     * decoration` (no quotes, three words - a completely natural way
+     * to write a free-text field) parsed "interior" as the whole value
+     * via readRawValue, leaving "electric" sitting at the top level of
+     * the file where the parser then tried - and failed - to read it
+     * as a primitive type or keyword. Requiring quotes for any multi-
+     * word kind/name would have "fixed" the crash too, but would still
+     * reject exactly the input a person naturally types; reading the
+     * rest of the line instead means unquoted multi-word text just
+     * works, and a quoted value still works exactly as it did. */
+    private String readMetadataValue() {
+        skipWhitespaceAndComments();
+        if (peek() == '"') return readRawValue();
+        int start = pos;
+        while (!atEnd() && peek() != '\n' && peek() != '#') pos++;
         return src.substring(start, pos).trim();
     }
 

@@ -15,6 +15,7 @@ import pbd.render.SkydomeRenderer;
 import pbd.render.TextRenderer;
 import pbd.sky.SolarCalculator;
 
+import java.io.IOException;
 import java.nio.DoubleBuffer;
 import java.nio.file.Path;
 import org.joml.Matrix4f;
@@ -78,6 +79,45 @@ public final class Main {
     };
     private static final String[] LOD_NAMES = {"AUTO", "VERY LOW", "LOW", "MEDIUM", "HIGH", "ULTRA"};
     private static int lodIndex = 3; // MEDIUM by default, unchanged from before
+    // F3-toggled (see justPressed(GLFW_KEY_F3) below) - on by default,
+    // since the whole POINT of this overlay is showing PBD's actual
+    // numbers (file size vs. an equivalent traditional mesh especially)
+    // rather than a debug aid someone has to know to turn on.
+    private static boolean showBenchmarkOverlay = true;
+    // Hide-in-container state (see handleHideKey/updateHideTransition
+    // below). hidingMetaIndex is the instance index of the metadata
+    // cube currently hidden in, or -1 when not hiding at all - also
+    // doubles as "is a hide/exit transition currently animating"
+    // together with hideTransitionT.
+    private static int hidingMetaIndex = -1;
+    // Voxel-destruction state (see handleDestroyKey below and
+    // pbd.voxel.{VoxelOctree,PrimitiveVoxelizer,VoxelMeshBuilder}) -
+    // maps an ORIGINAL instance index to the ClassicMeshRenderer
+    // drawing its voxelized replacement, once destroyed. The original
+    // itself gets hidden (see PbdRenderer.hideInstance) rather than
+    // removed from the scene's own instance list - simpler than
+    // renumbering every OTHER index that would shift if an entry were
+    // actually deleted.
+    private static final java.util.Map<Integer, ClassicMeshRenderer> destroyedRenderers = new java.util.HashMap<>();
+    // gridOriginLocal per destroyed instance (see PrimitiveVoxelizer.
+    // Result's own doc) - needed every frame to place that instance's
+    // voxel mesh correctly, alongside its ORIGINAL position/rotation
+    // (which destroyedRenderers' own key, the original instance index,
+    // still gives access to via scene.instances).
+    private static final java.util.Map<Integer, org.joml.Vector3f> destroyedGridOrigins = new java.util.HashMap<>();
+    private static float hideTransitionT = 1f; // 0=just started, 1=transition complete (camera fully at rest at its current target)
+    private static final float HIDE_TRANSITION_SECONDS = 0.6f;
+    private static Vector3f hideStartPos, hideTargetPos;
+    private static float hideStartYaw, hideTargetYaw, hideStartPitch, hideTargetPitch;
+    // Blender scale=(0.2,0.2,0.2) on a native cube, measured by hand
+    // against what actually feels big enough to crouch into - see the
+    // roadmap item this came from. That Blender scale exports to 0.4
+    // world units per axis (verified against the real export pipeline,
+    // not assumed - Blender's own obj.dimensions after that scale is
+    // 0.4, and 'cube' writes dimensions directly as scale=, no further
+    // factor applied), which is what this compares against directly
+    // since instanceWorldSize() already returns world-space extent.
+    private static final float MIN_HIDE_DIMENSION = 0.4f;
 
     private static final boolean[] keysDown = new boolean[GLFW_KEY_LAST + 1];
     private static final boolean[] keysDownPrev = new boolean[GLFW_KEY_LAST + 1];
@@ -151,6 +191,17 @@ public final class Main {
         PrimitiveRegistry primitiveRegistry = engine.primitiveRegistry();
         ModifierRegistry modifierRegistry = engine.modifierRegistry();
         MaterialRegistry materialRegistry = engine.materialRegistry();
+        // The actual, on-disk size of whatever file this loaded - shown
+        // on the benchmark overlay below because "how heavy is a real
+        // scene" is the single most concrete number this format's own
+        // pitch rests on, and the overlay used to have no size figure
+        // in it at all despite that being the headline claim.
+        long sourceFileBytes;
+        try {
+            sourceFileBytes = java.nio.file.Files.size(scenePath);
+        } catch (IOException e) {
+            sourceFileBytes = -1; // shouldn't happen (we just loaded this same file), but the overlay itself shouldn't crash the viewer if it somehow does
+        }
 
         final int width = 1280;
         final int height = 800;
@@ -166,6 +217,18 @@ public final class Main {
             applyLodPreset(renderer);
             pbd.audio.SoundPlayer soundPlayer = new pbd.audio.SoundPlayer(Path.of("src/main/resources/sounds"));
             renderer.soundPlayer = soundPlayer;
+            // Every distinct sound any keyframe references, decoded once
+            // right here rather than lazily on whatever click first
+            // needs each one - see SoundPlayer.preload's own doc for
+            // why the lazy version caused a real, measured mistiming
+            // ("not quite locked to the first frame").
+            java.util.Set<String> soundsToPreload = new java.util.LinkedHashSet<>();
+            for (pbd.format.PbdInstance inst : scene.instances) {
+                for (pbd.format.PbdInstance.Keyframe kf : inst.keyframes) {
+                    if (kf.sound != null) soundsToPreload.add(kf.sound);
+                }
+            }
+            for (String soundFile : soundsToPreload) soundPlayer.preload(soundFile);
 
             // Generic named-channel system (see pbd.render.ChannelTracker)
             // - "humidity" is a CONCRETE example wired up here, not
@@ -285,6 +348,9 @@ public final class Main {
                 if (justPressed(GLFW_KEY_C)) {
                     renderer.useCache = !renderer.useCache;
                 }
+                if (justPressed(GLFW_KEY_F3) || justPressed(GLFW_KEY_F5)) {
+                    showBenchmarkOverlay = !showBenchmarkOverlay;
+                }
                 // Time of day / season. Held, not tapped, for continuous
                 // scrubbing - same feel as WASD.
                 double dayOfYearBeforeThisFrame = dayOfYear;
@@ -374,6 +440,30 @@ public final class Main {
 
                 for (var entry : meshInstanceRenderers.entrySet()) {
                     Matrix4f world = renderer.instanceWorldMatrix(entry.getKey());
+                    entry.getValue().render(camera, (float) width / height, world);
+                }
+
+                // Voxel-destroyed instances: the ORIGINAL is hidden (see
+                // hideInstance, called when 'G' destroyed it), its voxel
+                // mesh renders here instead. translate+rotateZYX+translate,
+                // NOT instanceWorldMatrix's own full transform - the mesh
+                // is already in world-SCALE units (see VoxelMeshBuilder),
+                // so re-applying the instance's own scale here would
+                // double it. Z,Y,X rotation order matches every other
+                // rotation build in this codebase (see PbdRenderer's own
+                // pose-interpolation code) - and this exact transform
+                // (position + that rotation order + gridOriginLocal) was
+                // verified against a real placement test before being
+                // wired in here, not just derived on paper.
+                for (var entry : destroyedRenderers.entrySet()) {
+                    pbd.format.PbdInstance origInst = scene.instances.get(entry.getKey());
+                    org.joml.Vector3f gridOrigin = destroyedGridOrigins.get(entry.getKey());
+                    Matrix4f world = new Matrix4f()
+                        .translate(origInst.position)
+                        .rotateZ((float) Math.toRadians(origInst.rotationDeg.z))
+                        .rotateY((float) Math.toRadians(origInst.rotationDeg.y))
+                        .rotateX((float) Math.toRadians(origInst.rotationDeg.x))
+                        .translate(gridOrigin);
                     entry.getValue().render(camera, (float) width / height, world);
                 }
 
@@ -475,6 +565,14 @@ public final class Main {
                 // open/close action. Marks whatever was resting above the
                 // removed item (in the SAME box) as falling.
                 if (justPressed(GLFW_KEY_E)) {
+                    // Diagnostic print for the "how many containers are
+                    // even open right now" half of the question -
+                    // removeNearestToRay itself (see ContainerContents)
+                    // logs the per-item ray-test details once it's
+                    // actually called; this covers the OTHER way E could
+                    // find nothing - zero open containers to even check.
+                    System.out.println("[E-key] " + containerContents.size() + " open container group(s) to check"
+                        + (containerContents.isEmpty() ? " - nothing is open right now" : ""));
                     for (var entry : containerContents.entrySet()) {
                         pbd.pz.ContainerContents contents = entry.getValue();
                         java.util.List<Vector3f> boxWorldCenters = new java.util.ArrayList<>();
@@ -491,10 +589,78 @@ public final class Main {
                     }
                 }
 
+                // H: hide inside whichever metadata (container) bounding
+                // box the crosshair is on - press again from inside to
+                // come back out. A short (HIDE_TRANSITION_SECONDS)
+                // camera move/turn plays either way rather than an
+                // instant teleport, generated from the container's own
+                // transform and (going in) its linked doors' average
+                // position - not authored per-scene, since every
+                // qualifying container gets this for free.
+                if (justPressed(GLFW_KEY_H)) {
+                    if (hidingMetaIndex < 0) {
+                        int target = renderer.findMetadataCubeAlongRay(camera.position, camera.forward());
+                        if (target < 0) {
+                            System.out.println("[Hide] Not aiming at a container");
+                        } else {
+                            Vector3f size = renderer.instanceWorldSize(target);
+                            if (size.x < MIN_HIDE_DIMENSION || size.y < MIN_HIDE_DIMENSION || size.z < MIN_HIDE_DIMENSION) {
+                                System.out.println("[Hide] Too small to hide in (" + String.format("%.2f x %.2f x %.2f", size.x, size.y, size.z)
+                                    + ", need at least " + MIN_HIDE_DIMENSION + " on every axis)");
+                            } else {
+                                startHiding(target, scene, renderer, camera);
+                            }
+                        }
+                    } else {
+                        startExitingHide(camera);
+                    }
+                }
+                updateHideTransition(camera, dt);
+
+                // G: "shoot" whatever's under the crosshair - voxelizes
+                // it (see pbd.voxel) and swaps its rendering from the
+                // main tessellation pass to the resulting voxel mesh,
+                // testing the primitive->voxel transform end to end
+                // rather than only running it offline. One-shot per
+                // instance - a second G on an already-destroyed one just
+                // finds nothing there anymore (findDestructibleAlongRay
+                // has no geometry left to hit once hideInstance has
+                // zeroed its transform).
+                if (justPressed(GLFW_KEY_G)) {
+                    int target = renderer.findDestructibleAlongRay(camera.position, camera.forward());
+                    if (target < 0) {
+                        System.out.println("[Destroy] Nothing destructible under the crosshair");
+                    } else if (destroyedRenderers.containsKey(target)) {
+                        System.out.println("[Destroy] Already destroyed");
+                    } else {
+                        pbd.format.PbdInstance inst = scene.instances.get(target);
+                        var voxResult = pbd.voxel.PrimitiveVoxelizer.voxelize(inst, 12);
+                        if (voxResult == null) {
+                            System.out.println("[Destroy] '" + inst.id + "' can't be voxelized (indestructible, or an unsupported/mesh type)");
+                        } else {
+                            var regions = voxResult.octree.collectFilledRegions();
+                            pbd.format.PbdMeshData meshData = pbd.voxel.VoxelMeshBuilder.buildMesh(regions, voxResult.voxelWorldSize);
+                            pbd.format.PbdInstance voxelInst = new pbd.format.PbdInstance(inst.id + "_voxels", "mesh");
+                            voxelInst.meshData = meshData;
+                            voxelInst.material = inst.material;
+                            ClassicMeshRenderer voxelRenderer = buildMeshRenderer(voxelInst, scene, 0);
+                            if (voxelRenderer != null) {
+                                destroyedRenderers.put(target, voxelRenderer);
+                                destroyedGridOrigins.put(target, voxResult.gridOriginLocal);
+                                renderer.hideInstance(target);
+                                System.out.println("[Destroy] '" + inst.id + "' -> " + regions.size() + " voxel region(s), "
+                                    + meshData.vertexCount() + " vertices");
+                            }
+                        }
+                    }
+                }
+
                 smoothedFps = smoothedFps * 0.9f + (dt > 0f ? 1f / dt : 0f) * 0.1f;
 
+                if (showBenchmarkOverlay) {
                 String[] stats = {
                     String.format("FPS: %.1f  FRAME: %.2fMS", smoothedFps, dt * 1000f),
+                    String.format("SOURCE FILE: %s (%s)", scenePath.getFileName(), formatBytes(sourceFileBytes)),
                     String.format("INSTANCES: %d  PATCHES: %d  TRIANGLES: %d",
                         scene.instances.size(), renderer.patchCount(), renderer.lastTriangleCount),
                     String.format("LOD: %s (%s)  [-/+ TO CHANGE]", LOD_NAMES[lodIndex],
@@ -511,7 +677,7 @@ public final class Main {
                             renderer.lastDrawCallCount),
                     String.format("DAY: %d  HOUR: %04.1f  SUN ALT: %.1f  [ARROWS TO CHANGE]",
                         (int) dayOfYear, hourOfDay, sunPos.altitudeDeg()),
-                    "N/B: NEXT/PREV MODEL IN FOLDER",
+                    "N/B: NEXT/PREV MODEL IN FOLDER   F3/F5: HIDE THIS OVERLAY",
                 };
                 if (renderer.hasChannelDrivenInstances()) {
                     stats = java.util.stream.Stream.concat(java.util.Arrays.stream(stats),
@@ -520,6 +686,7 @@ public final class Main {
                         .toArray(String[]::new);
                 }
                 text.drawLines(stats, 10, 10, width, height);
+                }
 
                 window.swapBuffers();
             }
@@ -764,23 +931,38 @@ public final class Main {
         pbd.format.PbdMeshData data = tier == 0 ? inst.meshData : inst.meshDataByLod.get(tier);
         if (data == null) data = inst.meshData; // the requested tier vanished somehow (shouldn't happen) - fall back to base rather than render nothing
         try {
-            ObjMesh objMesh = new ObjMesh(data.toPositionNormalInterleaved(), data.indices);
+            // toPositionNormalUvInterleaved + hasUv=true: this data
+            // already HAD real per-vertex UVs (see PbdMeshData's own
+            // constructor/doc) - they just never reached the GPU before,
+            // since this renderer had no UV attribute or texture sampler
+            // at all. Reported as "UV mapping doesn't work in Java" -
+            // accurate, in that nothing here was even trying.
+            ObjMesh objMesh = new ObjMesh(data.toPositionNormalUvInterleaved(), data.indices, true);
             ClassicMeshRenderer meshRenderer = new ClassicMeshRenderer(Path.of("src/main/resources/shaders/classic"), objMesh);
-            // Was left at ClassicMeshRenderer's own default (a flat
-            // mid-gray) regardless of this instance's own mat= - looked
-            // uniformly dark next to properly textured/colored
-            // neighbors, reported as "only black, dark". This pipeline
-            // has no texture SAMPLING at all yet (unlike the main
-            // tessellation shader's MaterialTextureArray) - full
-            // texture support here is a real, separate undertaking (a
-            // new shader + UV upload path), not started - but at
-            // minimum the material's flat color= now actually gets used
-            // instead of silently falling back to a generic gray no
-            // matter what mat= says.
             var matFields = scene.materialOverrides.get(inst.material);
-            if (matFields != null && matFields.get("color") != null) {
-                float[] c = parseColorTriple(matFields.get("color"));
-                if (c != null) meshRenderer.baseColor = c;
+            if (matFields != null) {
+                if (matFields.get("color") != null) {
+                    float[] c = parseColorTriple(matFields.get("color"));
+                    if (c != null) meshRenderer.baseColor = c;
+                }
+                // uvScale/uvScaleU/uvScaleV: same precedence as the main
+                // tessellation pipeline's own reading of these fields
+                // (see PbdRenderer.uploadMaterials) - uvScale= alone sets
+                // both axes, uvScaleU=/uvScaleV= override independently.
+                float uScale = 1f, vScale = 1f;
+                if (matFields.get("uvScale") != null) {
+                    try { uScale = vScale = Float.parseFloat(matFields.get("uvScale")); } catch (NumberFormatException ignored) {}
+                }
+                if (matFields.get("uvScaleU") != null) {
+                    try { uScale = Float.parseFloat(matFields.get("uvScaleU")); } catch (NumberFormatException ignored) {}
+                }
+                if (matFields.get("uvScaleV") != null) {
+                    try { vScale = Float.parseFloat(matFields.get("uvScaleV")); } catch (NumberFormatException ignored) {}
+                }
+                meshRenderer.uvScale = new float[]{uScale, vScale};
+                if (matFields.get("texture") != null) {
+                    meshRenderer.setTexture(Path.of(matFields.get("texture")));
+                }
             }
             return meshRenderer;
         } catch (java.io.IOException e) {
@@ -813,6 +995,111 @@ public final class Main {
             meshInstanceCurrentTier.put(i, desired);
             if (old != null) old.close();
         }
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 0) return "unknown";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    /** Starts the hide-in transition: camera eases from wherever it
+     * currently is to metaIndex's own world center, turning to face the
+     * average position of whichever doors are linked to it (the
+     * existing containerTrigger list - see PbdParser/PbdInstance -
+     * recycled here exactly as the roadmap asked, not a new field).
+     * Facing the doors specifically (not just "forward") is the point:
+     * that's the direction anything coming through them would approach
+     * from, and where the player would want to be looking while
+     * hidden. */
+    private static void startHiding(int metaIndex, pbd.format.PbdScene scene, PbdRenderer renderer, FlyCamera camera) {
+        Vector3f center = renderer.instanceWorldCenter(metaIndex);
+        java.util.List<String> doorIds = scene.instances.get(metaIndex).containerTriggers;
+        Vector3f doorSum = new Vector3f();
+        int doorCount = 0;
+        for (String doorId : doorIds) {
+            for (int i = 0; i < scene.instances.size(); i++) {
+                if (scene.instances.get(i).id.equals(doorId)) {
+                    doorSum.add(renderer.instanceWorldCenter(i));
+                    doorCount++;
+                    break;
+                }
+            }
+        }
+        Vector3f faceDir;
+        if (doorCount > 0) {
+            Vector3f doorAvg = new Vector3f(doorSum).div(doorCount);
+            faceDir = new Vector3f(doorAvg).sub(center);
+            if (faceDir.lengthSquared() < 1e-8f) faceDir = new Vector3f(camera.forward()); // doors sit exactly at the container's own center (unusual, but not impossible) - nothing meaningful to point toward, keep facing whatever direction the player already was
+            else faceDir.normalize();
+        } else {
+            faceDir = new Vector3f(camera.forward()); // no doors linked at all - still lets the player hide, just can't compute an "outward" direction, so keeps their current facing instead of guessing one
+        }
+
+        hidingMetaIndex = metaIndex;
+        hideStartPos = new Vector3f(camera.position);
+        hideTargetPos = center;
+        hideStartYaw = camera.yaw;
+        hideStartPitch = camera.pitch;
+        // asin/atan2: exact inverse of FlyCamera.forward()'s own
+        // fx=cos(pitch)sin(yaw), fy=sin(pitch), fz=-cos(pitch)cos(yaw) -
+        // recovering the yaw/pitch that would make forward() return
+        // faceDir, since FlyCamera has no "look at" of its own to call
+        // instead, only look(dx,dy) driven by mouse delta.
+        hideTargetPitch = (float) Math.asin(Math.max(-1, Math.min(1, faceDir.y)));
+        hideTargetYaw = (float) Math.atan2(faceDir.x, -faceDir.z);
+        hideTargetYaw = shortestAngleTarget(hideStartYaw, hideTargetYaw);
+        hideTransitionT = 0f;
+        System.out.println("[Hide] Hiding in container " + scene.instances.get(metaIndex).id
+            + (doorCount > 0 ? " facing " + doorCount + " linked door(s)" : " (no linked doors to face)"));
+    }
+
+    /** Reuses the SAME start/target fields as startHiding, swapped - the
+     * exit eases back to wherever the player was actually standing right
+     * before they hid, rather than an instant unlock from deep inside a
+     * closed container's own center, which would otherwise have the
+     * player immediately clipping through its walls on their first WASD
+     * press back out. */
+    private static void startExitingHide(FlyCamera camera) {
+        Vector3f exitTargetPos = hideStartPos;
+        float exitTargetYaw = hideStartYaw, exitTargetPitch = hideStartPitch;
+        hideStartPos = new Vector3f(camera.position);
+        hideStartYaw = camera.yaw;
+        hideStartPitch = camera.pitch;
+        hideTargetPos = exitTargetPos;
+        hideTargetYaw = shortestAngleTarget(hideStartYaw, exitTargetYaw);
+        hideTargetPitch = exitTargetPitch;
+        hideTransitionT = 0f;
+        hidingMetaIndex = -1; // movement unlocks immediately - the transition below is purely visual, doesn't block WASD the way the hide-IN transition intentionally does
+        System.out.println("[Hide] Exiting hide");
+    }
+
+    /** angle, adjusted by a multiple of 2*PI so it's within PI of from -
+     * so interpolating from...adjusted takes the SHORT way around
+     * (e.g. 170deg -> -170deg turns 20 degrees through 180, not 340
+     * degrees the other way). */
+    private static float shortestAngleTarget(float from, float angle) {
+        float twoPi = (float) (Math.PI * 2);
+        float diff = ((angle - from + (float) Math.PI) % twoPi + twoPi) % twoPi - (float) Math.PI;
+        return from + diff;
+    }
+
+    /** Advances the current hide/exit transition (if any) toward its
+     * target - a no-op once hideTransitionT reaches 1. Runs every frame
+     * regardless of hidingMetaIndex's own value, since an exit
+     * transition's whole POINT is to keep animating for
+     * HIDE_TRANSITION_SECONDS after hidingMetaIndex has ALREADY gone
+     * back to -1 (movement unlocked immediately on exit - see
+     * startExitingHide - while this plays out purely visually
+     * alongside it). */
+    private static void updateHideTransition(FlyCamera camera, float dt) {
+        if (hideTransitionT >= 1f || hideStartPos == null) return;
+        hideTransitionT = Math.min(1f, hideTransitionT + dt / HIDE_TRANSITION_SECONDS);
+        float s = hideTransitionT * hideTransitionT * (3 - 2 * hideTransitionT); // smoothstep - eases in/out rather than a linear, mechanical-feeling move
+        camera.position.set(new Vector3f(hideStartPos).lerp(hideTargetPos, s));
+        camera.yaw = hideStartYaw + (hideTargetYaw - hideStartYaw) * s;
+        camera.pitch = hideStartPitch + (hideTargetPitch - hideStartPitch) * s;
     }
 
     private static boolean justPressed(int key) {
@@ -892,11 +1179,19 @@ public final class Main {
 
         void applyLookAndMove(FlyCamera camera, float dt) {
             camera.look(dx, dy);
-            camera.move(
-                keysDown[GLFW_KEY_W], keysDown[GLFW_KEY_S],
-                keysDown[GLFW_KEY_A], keysDown[GLFW_KEY_D],
-                keysDown[GLFW_KEY_SPACE], keysDown[GLFW_KEY_LEFT_SHIFT],
-                dt);
+            // Look stays free while hiding (see startHiding/
+            // updateHideTransition) - only WASD+Space+Shift are the
+            // "deplacements" the roadmap asked to block, not mouse-look,
+            // and the ongoing hide/exit transition itself also drives
+            // camera.position directly every frame regardless, which
+            // uncontested WASD movement would otherwise fight against.
+            if (hidingMetaIndex < 0) {
+                camera.move(
+                    keysDown[GLFW_KEY_W], keysDown[GLFW_KEY_S],
+                    keysDown[GLFW_KEY_A], keysDown[GLFW_KEY_D],
+                    keysDown[GLFW_KEY_SPACE], keysDown[GLFW_KEY_LEFT_SHIFT],
+                    dt);
+            }
         }
 
         /** Call once per frame after all justPressed() checks for that frame have been made. */

@@ -37,6 +37,7 @@ kind   = furniture
 author = "Alice"
 author = "Bob"                 # repeatable - every author= line is kept, not just the last
 origin = "https://example.com/wardrobe.pbd"
+description = "A tall oak wardrobe with two working doors"  # optional - server/search.php indexes and searches this if present; NOT yet exposed in the Blender add-on's own File metadata UI (name/kind/authors/origin are, this one isn't yet) - add it by hand-editing the exported .pbd if you want it searchable today
 
 include_material "materials.pbdmat"   # optional, repeatable - see Materials below
 
@@ -335,3 +336,96 @@ Blender's add-on captures/applies these directly on the SAME object
 own LOD list) rather than requiring a second, separate visible object
 per tier - each tier's geometry lives in a Mesh datablock that is never
 linked to its own Object.
+
+## Remote materials: textures fetch from the same remote directory too
+
+When `include_material` resolves to a URL (either directly, or because
+it's a relative reference inside a scene that was itself fetched from a
+URL - see this doc's own References section), that `.pbdmat`'s own
+`texture=`/`normalMap=`/`roughnessMap=`/`displacementMap=` filenames are
+now ALSO resolved and fetched as URLs relative to the `.pbdmat`'s own
+URL, not treated as local paths. A remote `.pbdmat` referencing
+`wood.png` fetches `wood.png` from right next to that `.pbdmat` on the
+same server - verified against a real remote fetch (not a mock), and
+against the same relative-URL resolution `pbd_ref`'s own nested sources
+already use.
+
+## pbd_ref material override (`mat`)
+
+An optional `mat=` field on a `pbd_ref` block overrides EVERY
+instance's own `mat=` inside the referenced file, for this one
+placement only - the source file itself, and any OTHER reference to
+it, are unaffected. Applies to nested refs too (anything the
+referenced file itself pulls in via its own `pbd_ref`s), since by the
+time this override is applied the whole sub-tree has already been
+flattened into plain instances.
+
+## Untrusted-host fetch confirmation
+
+`PbdFetcher` only fetches without asking from `pbd.mazetrojan.fr`
+(this project's own asset host). Anything else - any `pbd_ref` or
+`include_material` pointing at a URL on a different host - prints the
+exact host and full URL and asks for a y/n confirmation on stdin
+before downloading, once per distinct host per run. A scene file can
+name any server it wants; nothing about loading one should silently
+start pulling from wherever it happens to point.
+
+## Voxel destruction system (data model only so far)
+
+Two independent fields, both instance-level:
+
+- `indestructible = true` - this instance is never converted to voxels
+  by the runtime primitive->voxel transform (not built yet), and never
+  affected by alterations to nearby voxelized geometry. Absent means
+  false - never written as `indestructible = false`.
+- `hardness = X` / `resistance = X` - optional physical parameters,
+  meaningful only alongside `indestructible = true`. Nullable rather
+  than defaulted, so "no value given" and "explicitly zero" stay
+  distinguishable. hardness is the force threshold before anything
+  starts affecting this instance at all; resistance is the total
+  sustained damage it takes before an effect shows, a separate axis
+  from hardness.
+
+Verified round-tripping through every format this session: plain
+.pbd, .pbdbin (via the real PbdSerializer + PbdEngine.loadAny, not
+just the text layer), and .pbdasset - all confirmed with a real
+instance carrying non-default values on every field.
+
+**Not built yet**: the octree structure itself, the primitive->voxel
+runtime transform (including the zero-volume-primitive minimum-
+thickness handling and per-voxel UV mapping this needs), the
+destroy-button raycast, and physics for disjoint voxel pieces. This
+section only covers the data these will eventually read from -
+indestructible=true's own enforcement doesn't exist anywhere yet
+either, since there's no voxel system for it to opt an instance out
+of.
+
+## Light sources (`light` primitive type)
+
+No geometry of its own (same category as `pbd_ref`'s anchor) - affects
+how OTHER geometry gets lit.
+
+```
+light bulb {
+  pos = (0, 1, 0)
+  lightMode = point          # or "spot"
+  lightColor = (1.0, 0.9, 0.7)
+  lightIntensity = 5.0        # brightness scale, no fixed physical unit
+  lightRange = 8.0            # world units - contribution reaches zero at this distance
+  lightSpotAngle = 30         # degrees, half-angle of the cone - only meaningful for lightMode=spot, aimed along this instance's own -Z (rot=)
+}
+```
+
+Verified round-tripping through every format: plain `.pbd`, `.pbdbin`,
+and `.pbdasset`, all confirmed with a real instance carrying non-
+default values on every field via the real engine loader.
+
+The Blender add-on's own Spot Angle field taught a real lesson worth
+remembering for any future `subtype='ANGLE'` property: Blender expects
+`min`/`max`/`default` for such a property in RADIANS too, not just the
+value itself - writing them as bare degree numbers (as this field
+initially did) silently produces a wildly wrong effective range (a
+"1 to 89" intended as degrees becomes a 1-to-89-*radian* range, and
+Blender clamps up to that radian minimum), not an error, so it's easy
+to ship without noticing without actually testing an assigned value
+round-trips back out correctly - which is exactly how this was caught.

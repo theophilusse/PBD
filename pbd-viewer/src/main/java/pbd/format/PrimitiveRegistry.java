@@ -23,6 +23,7 @@ public final class PrimitiveRegistry {
         register("disc");
         register("torus");
         register("mesh");   // traditional (non-procedural) triangulated geometry - see PbdMeshData for the raw vertex/index storage and PbdParser's "vertexData=" field for how it's embedded as base64 text
+        register("light");  // a point or spot light source - no geometry of its own (same category as "group" below), see PbdInstance's own light* fields
         register("group"); // pbd_ref's zero-geometry anchor instance - see PbdParser.parsePbdRef / PatchExpander
     }
 

@@ -1,0 +1,35 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_cooking_01 xy=1x8
+# asset=appliances_cooking_01_65
+# property ItemHeight=85
+# property Translucent=true
+
+cube shape1 {
+  pos   = (-0.0135000, 0.428750, -0.0488000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.741000, 0.857500, 1.00000)
+  mat   = default
+}
+
+cube shape2 {
+  pos   = (-0.00720000, 1.89070, 0.299100)
+  rot   = (0.000, -89.98, -20.00)
+  scale = (0.0728000, 0.433200, 1.00000)
+  mat   = default
+}
+
+cube shape3 {
+  pos   = (-0.0135000, 1.77345, 0.0109000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.621600, 0.758900, 1.00000)
+  mat   = default
+}
+
+cube shape4 {
+  pos   = (-0.0136000, 0.801400, -0.335800)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.167000, 1.60280, 1.00000)
+  mat   = default
+}
+

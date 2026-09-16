@@ -79,6 +79,15 @@ public final class PatchExpander {
             // somewhere else entirely.
             case "mesh" -> new int[]{};
             case "group" -> new int[]{}; // pbd_ref anchor - no geometry, see PbdParser.parsePbdRef
+            // A light source (see PbdInstance's own light* fields) - no
+            // geometry of its own either, same category as "group"/
+            // "mesh" just above. Missing here originally despite the
+            // "mesh" case's own comment explicitly warning about this
+            // exact mistake - PbdRenderer.uploadLights reads a light
+            // instance's fields directly (position, color, etc.), never
+            // through a GPU patch, so this instance contributes nothing
+            // to the tessellation pipeline at all.
+            case "light" -> new int[]{};
             default -> throw new IllegalArgumentException(
                 "Unknown patch layout for type: " + inst.type
                 + " (add it here and in pbd.tese at the same time)");

@@ -1,0 +1,20 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_com_01 xy=3x18
+# asset=appliances_com_01_147
+# property Translucent=true
+
+cylinder shape1 {
+  pos   = (0.0772000, 0.211200, 0.266500)
+  rot   = (270.0, 0.000, 0.000)
+  scale = (0.334000, 0.422500, 0.334000)
+  mat   = default
+}
+
+plane shape2 {
+  pos   = (-0.00530000, 0.00000, 0.649150)
+  scale = (0.468800, 1, 0.937700)
+  mat   = default
+  # APPROXIMATION: bounding box of a 5-point polygon, not its exact silhouette - see console output at conversion time
+}
+

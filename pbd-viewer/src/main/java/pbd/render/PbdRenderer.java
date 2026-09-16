@@ -15,6 +15,7 @@ import pbd.format.PrimitiveRegistry;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -56,11 +57,13 @@ public final class PbdRenderer implements AutoCloseable {
     private static final int LOC_LOD_MAX_LVL  = 4;
     private static final int LOC_VIEW_PROJ    = 5;
     private static final int LOC_LIGHT_DIR    = 6;
+    private static final int LOC_LIGHT_COUNT  = 7;
 
     private static final int CACHED_LOC_WORLD       = 0;
     private static final int CACHED_LOC_VIEW_PROJ   = 1;
     private static final int CACHED_LOC_CAMERA_POS  = 2;
     private static final int CACHED_LOC_LIGHT_DIR   = 3;
+    private static final int CACHED_LOC_LIGHT_COUNT = 5;
     private static final int CACHED_LOC_MATERIAL_ID = 4;
 
     private static final int BINDING_INSTANCES        = 0;
@@ -68,6 +71,7 @@ public final class PbdRenderer implements AutoCloseable {
     private static final int BINDING_WORLD_TRANSFORMS  = 2;
     private static final int BINDING_MODIFIERS         = 3;
     private static final int BINDING_MATERIALS         = 4;
+    private static final int BINDING_LIGHTS            = 5;
 
     private final ShaderProgram program;
     private final int vao;
@@ -76,6 +80,7 @@ public final class PbdRenderer implements AutoCloseable {
     private final int worldTransformBuffer;
     private final int modifierBuffer;
     private final int materialBuffer;
+    private final int lightBuffer;
 
     private final ShaderProgram cachedProgram;
     private final int cachedVao;
@@ -156,6 +161,7 @@ public final class PbdRenderer implements AutoCloseable {
         worldTransformBuffer = glGenBuffers();
         modifierBuffer = glGenBuffers();
         materialBuffer = glGenBuffers();
+        lightBuffer = glGenBuffers();
 
         glPatchParameteri(GL_PATCH_VERTICES, 1);
 
@@ -201,6 +207,7 @@ public final class PbdRenderer implements AutoCloseable {
         uploadWorldTransforms(worldTransforms);
         uploadModifiers(scene, modifierRegistry);
         uploadMaterials(materialRegistry);
+        uploadLights(scene);
 
         totalUploadedBytes = (long) scene.instances.size() * 48
             + (long) patches.size() * 8
@@ -578,6 +585,71 @@ public final class PbdRenderer implements AutoCloseable {
         if (tMax < 0) return -1; // box is entirely behind the ray origin
         return Math.max(tMin, 0f);
     }
+    /** Same ray-vs-oriented-box technique as toggleKeyframedInstanceAlongRay
+     * above, applied to metadata=true instances specifically (container
+     * volumes) instead of animated ones - for the hide-in-container
+     * feature (Main.java), which needs to know which bounding box the
+     * player is actually aiming at, independent of whether it's
+     * currently open/showing items. Returns the closest hit's instance
+     * index, or -1. */
+    /** Same ray-vs-oriented-box technique again, this time over EVERY
+     * instance that could plausibly be a voxel-destruction target -
+     * anything with real geometry (not a metadata volume or an empty
+     * ref/group anchor) and not indestructible=true. Returns the
+     * closest hit's instance index, or -1 - the "shoot to test the
+     * primitive->voxel transform" trigger (Main.java) uses this to find
+     * what to voxelize. */
+    public int findDestructibleAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
+        int closestIndex = -1;
+        float closestDist = Float.MAX_VALUE;
+        for (int i = 0; i < scene.instances.size(); i++) {
+            pbd.format.PbdInstance inst = scene.instances.get(i);
+            if (inst.indestructible) continue;
+            if ("ref".equals(inst.type) || "group".equals(inst.type) || "light".equals(inst.type)) continue; // no geometry of their own to hit
+            if ("true".equals(inst.params.get("metadata"))) continue; // an invisible bin-packing volume, not something a shot should ever land on
+
+            Matrix4f invWorld = new Matrix4f(worldTransforms[i]).invert();
+            Vector3f localOrigin = invWorld.transformPosition(new Vector3f(rayOrigin));
+            Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
+
+            float t = rayBoxIntersection(localOrigin, localDir, -0.5f, 0.5f);
+            if (t < 0) continue;
+
+            Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
+            Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
+            float worldDist = worldHit.distance(rayOrigin);
+            if (worldDist < closestDist) {
+                closestDist = worldDist;
+                closestIndex = i;
+            }
+        }
+        return closestIndex;
+    }
+
+    public int findMetadataCubeAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
+        int closestIndex = -1;
+        float closestDist = Float.MAX_VALUE;
+        for (int i = 0; i < scene.instances.size(); i++) {
+            if (!"true".equals(scene.instances.get(i).params.get("metadata"))) continue;
+
+            Matrix4f invWorld = new Matrix4f(worldTransforms[i]).invert();
+            Vector3f localOrigin = invWorld.transformPosition(new Vector3f(rayOrigin));
+            Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
+
+            float t = rayBoxIntersection(localOrigin, localDir, -0.5f, 0.5f); // exact canonical bounds, no margin - a container's actual volume, not a slightly-generous click target like a door
+            if (t < 0) continue;
+
+            Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
+            Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
+            float worldDist = worldHit.distance(rayOrigin);
+            if (worldDist < closestDist) {
+                closestDist = worldDist;
+                closestIndex = i;
+            }
+        }
+        return closestIndex;
+    }
+
     public int toggleKeyframedInstanceAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
         if (!hasAnimatedInstances) return -1;
         int closestIndex = -1;
@@ -761,21 +833,22 @@ public final class PbdRenderer implements AutoCloseable {
         displacementTextureArrayGlId = displacementTextureArray.glId;
 
         int count = Math.max(materialRegistry.count(), 1);
-        // 64, not 56: a struct containing a vec4 has 16-byte base
+        // 64, not 60: a struct containing a vec4 has 16-byte base
         // alignment in std430, and the array stride must be a multiple
-        // of that - the struct's natural size (56 bytes = 14 floats)
-        // isn't a multiple of 16, so GLSL pads every element up to 64.
-        // Writing exactly 56 bytes per entry with no padding put every
-        // material past index 0 at the wrong offset - confirmed against
-        // the official GLSL std430 layout rules (a struct's base
-        // alignment is its largest member's alignment, vec4 = 16 here,
-        // and array stride is that size rounded up to that alignment).
+        // of that - the struct's natural size (60 bytes = 15 floats,
+        // now that uvScale split into uvScaleU/uvScaleV) isn't a
+        // multiple of 16, so GLSL pads every element up to 64. Writing
+        // exactly the natural size with no padding put every material
+        // past index 0 at the wrong offset - confirmed against the
+        // official GLSL std430 layout rules (a struct's base alignment
+        // is its largest member's alignment, vec4 = 16 here, and array
+        // stride is that size rounded up to that alignment).
         final int stride = 64;
         ByteBuffer buf = nativeBuffer(count * stride);
         for (int id = 0; id < count; id++) {
             String name = materialRegistry.nameOf(id);
             MaterialCatalog.Entry entry = resolveMaterialEntry(name);
-            float textureLayer = -1f, uvScale = 1f, normalLayer = -1f, roughnessLayer = -1f, reflectivity = 0f, transparency = 0f;
+            float textureLayer = -1f, uvScaleU = 1f, uvScaleV = 1f, normalLayer = -1f, roughnessLayer = -1f, reflectivity = 0f, transparency = 0f;
             float displacementLayer = -1f, displacementScale = 0f;
             Map<String, String> override = name != null ? scene.materialOverrides.get(name) : null;
             if (override != null) {
@@ -793,7 +866,17 @@ public final class PbdRenderer implements AutoCloseable {
                     // would look like it did nothing at all, because the
                     // texture was never the thing being shown either way.
                     textureLayer = (layer >= 0) ? layer : -2f;
-                    if (override.containsKey("uvScale")) uvScale = Float.parseFloat(override.get("uvScale"));
+                    // uvScale= alone (no U/V suffix) still works and sets
+                    // BOTH axes - a hand-edited or older file with the
+                    // old scalar field isn't broken by this change.
+                    // uvScaleU=/uvScaleV= override it independently when
+                    // present, for exactly the "two axes" need this
+                    // split exists for.
+                    if (override.containsKey("uvScale")) {
+                        uvScaleU = uvScaleV = Float.parseFloat(override.get("uvScale"));
+                    }
+                    if (override.containsKey("uvScaleU")) uvScaleU = Float.parseFloat(override.get("uvScaleU"));
+                    if (override.containsKey("uvScaleV")) uvScaleV = Float.parseFloat(override.get("uvScaleV"));
                 }
                 if (override.containsKey("normalMap")) {
                     int layer = normalTextureArray.layerOf(Path.of(override.get("normalMap")));
@@ -817,25 +900,96 @@ public final class PbdRenderer implements AutoCloseable {
                         ? Float.parseFloat(override.get("displacementScale")) : 0.02f;
                 }
             }
-            System.out.printf("[Materials] id=%d name=%s texLayer=%.0f uvScale=%.2f normalLayer=%.0f roughLayer=%.0f dispLayer=%.0f reflect=%.2f transp=%.2f%n",
-                id, name, textureLayer, uvScale, normalLayer, roughnessLayer, displacementLayer, reflectivity, transparency);
+            System.out.printf("[Materials] id=%d name=%s texLayer=%.0f uvScaleU=%.2f uvScaleV=%.2f normalLayer=%.0f roughLayer=%.0f dispLayer=%.0f reflect=%.2f transp=%.2f%n",
+                id, name, textureLayer, uvScaleU, uvScaleV, normalLayer, roughnessLayer, displacementLayer, reflectivity, transparency);
             buf.putFloat(entry.r).putFloat(entry.g).putFloat(entry.b).putFloat(1f); // baseColor (vec4, alpha unused)
             buf.putFloat(entry.shininess);
             buf.putFloat(entry.specularStrength);
             buf.putFloat(textureLayer);
-            buf.putFloat(uvScale);
+            buf.putFloat(uvScaleU);
+            buf.putFloat(uvScaleV);
             buf.putFloat(normalLayer);
             buf.putFloat(roughnessLayer);
             buf.putFloat(reflectivity);
             buf.putFloat(transparency);
             buf.putFloat(displacementLayer);
             buf.putFloat(displacementScale);
-            buf.putFloat(0f).putFloat(0f); // std430 padding - see the stride comment above
+            buf.putFloat(0f); // std430 padding - see the stride comment above (was 2 floats before uvScaleV took one of them)
         }
         buf.flip();
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, materialBuffer);
         glBufferData(GL_SHADER_STORAGE_BUFFER, buf, GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BINDING_MATERIALS, materialBuffer);
+        MemoryUtil.memFree(buf);
+    }
+
+    /** How many "light"-type instances the last uploadLights() call
+     * actually found - 0 is a completely normal, common case (most
+     * scenes have none), not an error; the shader's own light-
+     * accumulation loop (see pbd.frag) just contributes nothing extra
+     * beyond the existing sun/ambient terms when this is 0, same
+     * result as before lights existed at all. */
+    public int lightCount = 0;
+
+    /** Public (unlike every OTHER upload* method here, all private and
+     * only ever called as part of the full upload() sequence at scene
+     * load) specifically so a caller can refresh JUST the lights after
+     * changing one's state at runtime - PbdEngine.SceneHandle's own
+     * setLightEnabled/toggleLight change the PbdScene's in-memory data,
+     * not anything already sitting in this renderer's GPU buffers;
+     * re-running the ENTIRE upload() for a light switch would needlessly
+     * re-upload every instance/patch/material too. Main.java's own game
+     * loop calls this (not the full upload()) after any such change. */
+    public void uploadLights(PbdScene scene) {
+        List<Integer> lightIndices = new ArrayList<>();
+        for (int i = 0; i < scene.instances.size(); i++) {
+            PbdInstance candidate = scene.instances.get(i);
+            if ("light".equals(candidate.type) && candidate.lightEnabled) lightIndices.add(i);
+        }
+        lightCount = lightIndices.size();
+        // count is never 0 for the SSBO itself even with no lights in
+        // the scene - same "at least 1" convention uploadMaterials uses
+        // for its own buffer, avoiding a zero-length buffer (which some
+        // drivers are known to mishandle) for a case that's completely
+        // normal, not exceptional.
+        int count = Math.max(lightCount, 1);
+        // 64-byte stride: 3 (vec3 + float) pairs = 48 bytes, + 1 int
+        // (isSpot) = 52 bytes, rounded up to the next multiple of 16
+        // (std430's own array-stride rule for a struct whose largest
+        // member - any of the vec3s - has 16-byte alignment) = 64.
+        // Same reasoning as the material struct's own stride comment,
+        // re-derived for this different field layout rather than
+        // assumed to be the same number by coincidence.
+        final int stride = 64;
+        ByteBuffer buf = nativeBuffer(count * stride);
+        for (int idx : lightIndices) {
+            pbd.format.PbdInstance inst = scene.instances.get(idx);
+            Vector3f worldPos = worldTransforms[idx].getTranslation(new Vector3f());
+            float range = inst.lightRange != null ? inst.lightRange : 6f;
+            Vector3f color = inst.lightColor != null ? inst.lightColor : new Vector3f(1f, 1f, 1f);
+            float intensity = inst.lightIntensity != null ? inst.lightIntensity : 1f;
+            boolean isSpot = "spot".equals(inst.lightMode);
+            // -Z in this instance's OWN local frame, rotated into world
+            // space - matches Blender's own spot-lamp convention (see
+            // properties.py's own pbd_light_mode description), so
+            // aiming a spot in the addon by rotating the Empty aims it
+            // the same way here.
+            Vector3f spotDir = new Vector3f(0, 0, -1);
+            worldTransforms[idx].transformDirection(spotDir);
+            spotDir.normalize();
+            float spotCosAngle = isSpot && inst.lightSpotAngleDeg != null
+                ? (float) Math.cos(Math.toRadians(inst.lightSpotAngleDeg)) : -1f; // -1 = cos(180deg) = every direction passes, i.e. no cone restriction at all for a non-spot light
+
+            buf.putFloat(worldPos.x).putFloat(worldPos.y).putFloat(worldPos.z).putFloat(range);
+            buf.putFloat(color.x).putFloat(color.y).putFloat(color.z).putFloat(intensity);
+            buf.putFloat(spotDir.x).putFloat(spotDir.y).putFloat(spotDir.z).putFloat(spotCosAngle);
+            buf.putInt(isSpot ? 1 : 0);
+            buf.putFloat(0f).putFloat(0f).putFloat(0f); // std430 padding to the 64-byte stride
+        }
+        buf.flip();
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, lightBuffer);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, buf, GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BINDING_LIGHTS, lightBuffer);
         MemoryUtil.memFree(buf);
     }
 
@@ -934,6 +1088,22 @@ public final class PbdRenderer implements AutoCloseable {
         return Math.round(2.0 * FLAT_LEVEL * FLAT_LEVEL);
     }
 
+    /** Zeroes instanceIndex's world transform (scale to nothing, in
+     * effect) and re-uploads - the safe way to make one instance stop
+     * being drawn by the main tessellation batch without restructuring
+     * how that batch itself works (every instance renders together, in
+     * one pass - there's no per-instance "skip" the batch itself
+     * exposes). Used when a primitive gets voxel-destroyed (Main.java):
+     * the original stops rendering via this, and its voxelized
+     * replacement renders separately, through the classic-mesh path
+     * (see ClassicMeshRenderer) instead. Irreversible from here - there
+     * is no un-hide, matching a destroyed primitive not coming back
+     * either. */
+    public void hideInstance(int instanceIndex) {
+        worldTransforms[instanceIndex] = new Matrix4f().scale(0f);
+        uploadWorldTransforms(worldTransforms);
+    }
+
     public void render(FlyCamera camera, float aspectRatio) {
         if (useCache) {
             renderCached(camera, aspectRatio);
@@ -980,6 +1150,7 @@ public final class PbdRenderer implements AutoCloseable {
         glUniform1f(LOC_LOD_MIN_LVL, lodMinLevel);
         glUniform1f(LOC_LOD_MAX_LVL, lodMaxLevel);
         glUniform3f(LOC_LIGHT_DIR, lightDir[0], lightDir[1], lightDir[2]);
+        glUniform1i(LOC_LIGHT_COUNT, lightCount);
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             glUniformMatrix4fv(LOC_VIEW_PROJ, false, camera.viewProj(aspectRatio).get(stack.mallocFloat(16)));
@@ -1068,6 +1239,7 @@ public final class PbdRenderer implements AutoCloseable {
                 glUniformMatrix4fv(CACHED_LOC_VIEW_PROJ, false, camera.viewProj(aspectRatio).get(stack.mallocFloat(16)));
                 glUniform3f(CACHED_LOC_CAMERA_POS, camera.position.x, camera.position.y, camera.position.z);
                 glUniform3f(CACHED_LOC_LIGHT_DIR, lightDir[0], lightDir[1], lightDir[2]);
+                glUniform1i(CACHED_LOC_LIGHT_COUNT, lightCount);
                 glUniform1ui(CACHED_LOC_MATERIAL_ID,
                     materialRegistry.idOf(inst.material != null ? inst.material : "default"));
 

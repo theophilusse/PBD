@@ -1,0 +1,12 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=advertising_01 xy=7x1
+# asset=advertising_01_15
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.150000, 0.100000, 0.00000)
+  scale = (1.30000, 0.200000, 1.00000)
+  mat   = default
+}
+

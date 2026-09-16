@@ -238,3 +238,227 @@ Xvfb-virtualized) OpenGL context; there's no headless mock for those.
   here (a new shader + UV upload path, matching what the main
   tessellation pipeline's MaterialTextureArray already does) is a
   separate, larger undertaking, not started.
+
+- `SoundPlayer.play()` used to decode (`AudioSystem.getAudioInputStream`
+  + `Clip.open`, real disk/CPU work) the FIRST time each distinct sound
+  was needed - synchronously, on the same thread driving animation and
+  rendering, right at the moment of the click that needed it. That
+  frame ran long; the NEXT frame's delta time (measured against the
+  wall clock, which kept moving during the decode) came out oversized,
+  making the door's swing visibly jump ahead right as the newly-loaded
+  sound finally started - reported as sound "not quite locked to the
+  first frame." `SoundPlayer.preload()`, called once per distinct sound
+  a scene's keyframes reference right after construction (Main.java),
+  moves that cost to scene load instead.
+
+- `removeNearestToRay` and the E-key handling in Main.java now print
+  per-item diagnostics (world position, hit-sphere radius, distance
+  from the ray, hit/miss) on every E press, plus how many container
+  groups are even open to check - added specifically because repeated
+  reports that E finds nothing had exhausted what code-level
+  inspection alone could resolve; every isolated and full-chain test
+  built to reproduce it passed, so the next step is seeing the real
+  numbers from an actual run rather than a further theory.
+- Found while adding pbd_ref's mat= override: `_create_object_for_instance`
+  had TWO checks comparing against the string 'ref' where the real
+  parsed prim_type is 'pbd_ref' ('ref' is only ever obj.pbd.pbd_type's
+  OWN value) - meaning source=/fallback= (and now mat=) never actually
+  read back in for any REAL file, only for the in-memory 'group' shape
+  the Java parser produces after resolving one, which no serializer
+  ever writes to disk. The object still got created correctly (a
+  separate, already-fixed check), so import didn't error - it just
+  silently produced a ref object with empty source=, meaning a
+  re-export of a reimported file with a ref would have written out an
+  EMPTY source= and silently discarded the reference. Only caught by
+  asserting the reimported VALUE matches what was exported, not just
+  that import succeeds without error - worth remembering as a testing
+  gap for anything else in this reader.
+
+## Voxel system (`pbd.voxel`)
+
+`VoxelOctree`: sparse occupancy octree, 2^maxDepth grid per axis. The
+"optimization" value is `insertFilledBox` collapsing a large uniform
+region (a solid cube's whole interior, say) to a single node rather
+than needing one leaf per voxel - verified with a real test: a fully-
+filled 64^3 grid (262144 voxels) collapses to exactly 1 region.
+`collectFilledRegions()` returns the compressed form; use
+`collectFilledUnitVoxels()` only when individually-addressable 1x1x1
+pieces are actually needed (a destruction system, eventually), since
+it deliberately gives up the compression to get there. 23/23 tests
+covering insert/remove/query, out-of-bounds safety, box-fill
+compression (including adjacent fills re-collapsing), and sparse
+scattered-voxel correctness.
+
+`PrimitiveVoxelizer`: converts one PbdInstance into a VoxelOctree.
+`indestructible=true` and `mesh`-type instances both return null (never
+voxelized - mesh deliberately deferred, see the class's own doc for
+why). Zero-volume primitives (plane, disc) get extruded to a minimum
+thickness (a fraction of their largest in-plane dimension) before
+voxelizing, rather than mapping to zero voxels. Shape formulas are
+standard parametric definitions in the canonical -0.5..0.5 local space
+every primitive already uses - verified quantitatively, not just "does
+it run": cylinder/cube voxel-count ratio landed at 0.81 against a
+theoretical pi/4=0.785, cone/cylinder at 0.326 against a theoretical
+1/3, a torus's center voxel confirmed hollow. Not cross-checked line by
+line against the tessellation shader's own exact curves, so a small
+boundary mismatch (rather than a wrong ratio) is possible.
+
+**Not built yet**: rendering voxelized geometry back into the scene
+(each octree region as a scaled cube instance, presumably, with correct
+per-face UVs), the destroy-button raycast trigger, and physics for
+disjoint fallen pieces.
+
+## Voxel rendering + destroy trigger
+
+`VoxelMeshBuilder` turns a VoxelOctree's regions into a PbdMeshData
+directly (one box per region, no per-voxel duplication for a merged
+region) - it renders through the EXISTING "mesh" instance pipeline
+(ClassicMeshRenderer), no new shader work needed. UV tiles by voxel
+COUNT, not world size (verified: a 4-voxel merged region shows UV
+0..4, not 0..2), so a compressed region looks like the same density of
+small voxels it represents rather than one stretched texture.
+
+A real placement bug was caught and fixed here: the original
+gridOriginLocal formula was missing a `-scale/2` term, producing a
+world-space offset exactly `scale/2` too high on every axis - caught
+by a real test comparing the voxelized mesh's world bounding box
+against the original primitive's own, not by inspection. Also verified
+with rotation (a 90-degree Y rotation correctly swaps the X/Z world
+extents), using the same Z,Y,X rotation order every other transform in
+this codebase already uses.
+
+'G' (Main.java) raycasts for the nearest non-indestructible, non-
+metadata, non-ref instance and voxelizes it on the spot - the original
+gets hidden (PbdRenderer.hideInstance, zeroing its transform rather
+than trying to remove one entry from the batched tessellation draw)
+and its voxel mesh renders in its place, at the CORRECT world position/
+rotation (position + Z,Y,X rotation + gridOriginLocal - NOT the
+original's full world matrix, which would double-apply scale since the
+mesh is already in world-scale units).
+
+**Not built yet**: physics for disjoint voxel pieces (falling apart
+after a hit) - this trigger currently swaps the WHOLE primitive to its
+voxel form in place, not fragmenting/scattering it.
+
+## Octree-adaptive rasterization (not just octree storage)
+
+The curved shapes (cylinder, cone, sphere, torus) used to test every
+individual voxel in their bounding grid one at a time - correct, but
+not actually using the octree's own hierarchical structure for
+anything beyond compressing the FINAL result. Rewritten to recursively
+classify whole REGIONS first (RegionClassifier + rasterizeAdaptive in
+PrimitiveVoxelizer): a region provably entirely inside the shape gets
+one insertFilledBox call and stops recursing; entirely outside gets
+skipped entirely; only a region actually straddling the curved
+boundary recurses into its 8 children, down to individual leaf voxels
+only right at the boundary itself.
+
+Verified two ways, not just "it runs": (1) exact equivalence - a
+temporary test compared the new adaptive result against the old
+brute-force one, voxel-set-for-voxel-set, across cylinder/cone/sphere/
+torus at three resolutions (16/32/64 per axis) plus a non-cubic grid
+case, all identical, zero discrepancies; (2) real cost reduction - at
+a 128^3 grid, the adaptive cylinder used 235,721 classify() calls
+against 2,097,152 brute-force point tests (11.2%, roughly 9x fewer) -
+a cylinder's own boundary shell is a real fraction of its volume at
+any finite resolution, so this ratio is shape-accurate, not an
+inflated best case.
+
+Region containment for each shape uses the standard closest/farthest-
+point-in-an-axis-aligned-box technique (independently per axis, the
+box's own corners/clamped-origin), the same tool sphere/box
+intersection tests use generally - torus additionally nests this same
+technique twice (once for radial distance from the Y axis, once for
+how far that radial distance sits from the ring's own major radius)
+rather than needing shape-specific machinery.
+
+## Light rendering
+
+`PbdRenderer.uploadLights` collects every `light`-type instance into a
+64-byte-stride SSBO (binding 5 - materials own 4, see that method's own
+alignment comment for the exact field packing), read by BOTH the main
+tessellation fragment shader (`pbd.frag`) and the cached path
+(`cached.frag`) - point/spot lights need to look the same regardless of
+which of the two is currently active (the C key toggles between them),
+so both shaders carry an identical copy of the same accumulation loop
+(distance falloff to zero at the light's own range, plus an angular
+falloff for a spot's cone edge) rather than only one of the two paths
+supporting lights at all.
+
+Verified as thoroughly as possible without an actual GPU in this
+environment: the Java-side struct packing was cross-checked field by
+field against the GLSL struct it's read as (order, type, and byte
+offset all confirmed to agree), and the uniform locations used by the
+new `lightCount` uniform (7 in the main pipeline, 5 in the cached one)
+were confirmed free by inventorying every OTHER uniform location
+already in use across every shader stage sharing that same program -
+not run and visually confirmed on real hardware, which remains the one
+verification step this couldn't cover here.
+
+## Developer facade (PbdEngine.SceneHandle)
+
+Significantly enriched this pass - was previously limited to position
+get/set, type (read-only), and scene-level metadata, meaning almost
+any real modding task had to drop through raw() to the underlying
+PbdScene/PbdInstance. Now also covers: rotation, scale, material,
+category, parent (by name, not raw index), indestructible/hardness/
+resistance, every light field (mode/color/intensity/range/spot angle),
+plus addInstance/removeInstance/hasInstance for actually building or
+tearing down a scene rather than only editing an existing one.
+raw() remains available for anything not covered.
+
+Verified with a real, standalone test exercising all 30 behaviors
+(round trip of every new getter/setter, every documented exception -
+duplicate name, unknown type, unknown parent, invalid lightMode - and
+critically a full save-to-text-and-reload cycle confirming these
+aren't just in-memory Java state but actually reach the real parser/
+serializer).
+
+## A note on this session's own build
+
+A real, full compile against the actual LWJGL 3.3.3 jars (not the
+hand-written stub used for most of this project's own iteration, which
+only catches missing-type errors involving pbd's own classes) surfaced
+two genuine missing imports - java.io.IOException in Main.java and
+java.util.ArrayList in PbdRenderer.java - that had been silently
+breaking the full build since the turns that introduced them. Worth
+remembering: the stub compile used throughout this project is good for
+catching most mistakes early, but a missing JDK-standard-library import
+specifically will NOT surface through it if nothing else in the same
+file happens to need that stub - only a real compile against the
+genuine dependency catches that category of error.
+
+## A real crash this "light" feature shipped with
+
+`PatchExpander.partsFor` throws for any type it doesn't have a case
+for - by design, "a wrong guess is worse than a loud failure." The
+"mesh" case's own comment already warned, in so many words, that a new
+primitive type needs a case added here even when its geometry comes
+from somewhere else entirely - "light" was added without one anyway,
+so any scene containing a light instance crashed immediately on load,
+before a single frame rendered. Fixed (light -> zero patches, same as
+"group"/"mesh"), reproduced the exact reported stack trace against a
+real scene containing a light instance first to confirm the crash was
+real, then confirmed the fix resolves it the same way, rather than
+reasoning about it from the code alone.
+
+Also found and fixed while looking for every other place a
+zero-geometry type needs the same treatment: `findDestructibleAlongRay`
+(the G-key raycast) excludes "ref"/"group" from being hit at all, since
+neither has visible geometry to aim at - "light" was missing from that
+same exclusion, so a light instance could be "aimed at" and would
+report "can't be voxelized" rather than the ray passing through it the
+way it does for a ref.
+
+## lightEnabled
+
+A light now has a runtime on/off separate from its intensity (a light
+switch shouldn't need to remember and restore the authored brightness
+by hand) - `PbdEngine.SceneHandle.setLightEnabled`/`toggleLight`/
+`isLightEnabled`, an `lightEnabled=false` line only written when off
+(on is the default, so the common case stays terse), and
+`PbdRenderer.uploadLights` (now public) skips a disabled light
+entirely when building the GPU buffer. uploadLights being callable on
+its own - not just as part of the full upload() sequence - matters
+here specifically: toggling a light shouldn't need re-uploading every
+instance/patch/material in the whole scene along with it.

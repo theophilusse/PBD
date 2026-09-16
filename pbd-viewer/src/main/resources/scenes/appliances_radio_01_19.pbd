@@ -1,0 +1,13 @@
+pbd_version 1
+# Converted from tileGeometry.txt
+# tileset=appliances_radio_01 xy=3x2
+# asset=appliances_radio_01_19
+# property Translucent=true
+
+cube shape1 {
+  pos   = (0.255300, 1.03370, 0.174000)
+  rot   = (0.000, -89.98, 0.000)
+  scale = (0.510600, 0.332200, 0.210200)
+  mat   = default
+}
+

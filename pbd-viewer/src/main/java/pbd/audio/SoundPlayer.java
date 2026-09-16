@@ -53,6 +53,26 @@ public final class SoundPlayer {
         clip.start();
     }
 
+    /** Decodes and caches soundFileName WITHOUT playing it - call once
+     * per distinct sound, for every sound a scene's keyframes reference,
+     * right after construction and before the render loop starts.
+     * play()'s own lazy load-on-first-use used to do this decode step
+     * (AudioSystem.getAudioInputStream + Clip.open, both real, measured
+     * disk/CPU work) synchronously on the FIRST click that needed a
+     * given sound - on the very same thread driving animation and
+     * rendering, so that frame ran long, and the NEXT frame's delta time
+     * (measured against the wall clock, which kept moving during the
+     * decode) came out oversized, making the door's swing visibly jump
+     * ahead right as the now-loaded sound finally started - reported as
+     * "not quite locked to the first frame." Preloading moves that same
+     * decode cost to scene load, once, before anything is watching. */
+    public void preload(String soundFileName) {
+        if (!cache.containsKey(soundFileName)) {
+            Clip clip = load(soundFileName);
+            if (clip != null) cache.put(soundFileName, clip);
+        }
+    }
+
     private Clip load(String soundFileName) {
         if (!soundFileName.toLowerCase().endsWith(".wav")) {
             System.err.println("[SoundPlayer] '" + soundFileName + "' isn't a .wav file - "

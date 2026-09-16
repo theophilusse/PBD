@@ -294,30 +294,51 @@ public final class ContainerContents {
         return new Vector3f(containerWorldCenters.get(item.containerIndex)).add(rotatedOffset);
     }
 
+    private static String fmt(Vector3f v) {
+        return String.format("(%.3f, %.3f, %.3f)", v.x, v.y, v.z);
+    }
+
     public String removeNearestToRay(List<Vector3f> containerWorldCenters, List<Quaternionf> containerWorldRotations,
                                       Vector3f rayOrigin, Vector3f rayDir) {
         PlacedItem closest = null;
         float closestDist = Float.MAX_VALUE;
+        // Diagnostic logging: repeated, specific reports that E never
+        // hits anything, with no crash and no other lead found across
+        // several rounds of code-level verification (isolated tests,
+        // full real-scene chains, all passing), point at needing to see
+        // this system's ACTUAL behavior in the real environment rather
+        // than continuing to guess blindly against test data that keeps
+        // passing. Printed on every E press specifically so the exact
+        // numbers involved (positions, radii, distances) are visible
+        // instead of just a final "hit" or "miss" - console output from
+        // an actual attempt is worth more here than another theory.
+        System.out.println("[E-key] ray origin=" + fmt(rayOrigin) + " dir=" + fmt(rayDir)
+            + " checking " + items.size() + " item(s)");
         for (PlacedItem item : items) {
             Vector3f worldPos = itemWorldPosition(item, containerWorldCenters, containerWorldRotations);
             Vector3f toItem = new Vector3f(worldPos).sub(rayOrigin);
             float t = toItem.dot(rayDir);
-            if (t < 0) continue;
+            float itemRadius = Math.max(0.08f, Math.max(item.bounds.width, Math.max(item.bounds.height, item.bounds.depth)) * item.scaleFactor * 0.6f);
+            if (t < 0) {
+                System.out.println("  " + item.sourceFile + " world=" + fmt(worldPos)
+                    + " BEHIND camera (t=" + t + ") - skipped");
+                continue;
+            }
             Vector3f closestPoint = new Vector3f(rayDir).mul(t).add(rayOrigin);
             float dist = closestPoint.distance(worldPos);
-            // 0.08 floor: a heavily shrunk item (BinPacker forcing a
-            // small scaleFactor into a tight container) could otherwise
-            // end up with a hit-sphere too small to reliably aim at with
-            // a simple ray-vs-sphere test and ordinary mouse precision -
-            // this trades a little accuracy on tiny items for actually
-            // being able to click them at all.
-            float itemRadius = Math.max(0.08f, Math.max(item.bounds.width, Math.max(item.bounds.height, item.bounds.depth)) * item.scaleFactor * 0.6f);
-            if (dist <= itemRadius && t < closestDist) {
+            boolean hit = dist <= itemRadius;
+            System.out.println("  " + item.sourceFile + " world=" + fmt(worldPos) + " radius=" + itemRadius
+                + " dist-from-ray=" + dist + " t=" + t + (hit ? " HIT" : " miss (too far from ray)"));
+            if (hit && t < closestDist) {
                 closestDist = t;
                 closest = item;
             }
         }
-        if (closest == null) return null;
+        if (closest == null) {
+            System.out.println("[E-key] nothing hit");
+            return null;
+        }
+        System.out.println("[E-key] removing " + closest.sourceFile);
 
         items.remove(closest);
         for (PlacedItem other : items) {

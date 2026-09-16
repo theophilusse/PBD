@@ -92,4 +92,23 @@ public final class PbdMeshData {
         }
         return out;
     }
+
+    /** Same as toPositionNormalInterleaved, with each vertex's own u,v
+     * appended - pos.x,y,z, nrm.x,y,z, u,v per vertex (8 floats). This
+     * is what ClassicMeshRenderer's VBO actually expects now (see its
+     * own doc): a "mesh" instance's UVs were being extracted and stored
+     * correctly the whole time (see PbdMeshData's own constructor,
+     * TextureData round trip) but never actually reaching the GPU -
+     * this method existing at all is the fix, not a change to how UVs
+     * themselves get computed or read. */
+    public float[] toPositionNormalUvInterleaved() {
+        int vertexCount = vertexCount();
+        float[] out = new float[vertexCount * 8];
+        for (int i = 0; i < vertexCount; i++) {
+            out[i * 8] = positions[i * 3]; out[i * 8 + 1] = positions[i * 3 + 1]; out[i * 8 + 2] = positions[i * 3 + 2];
+            out[i * 8 + 3] = normals[i * 3]; out[i * 8 + 4] = normals[i * 3 + 1]; out[i * 8 + 5] = normals[i * 3 + 2];
+            out[i * 8 + 6] = uvs[i * 2]; out[i * 8 + 7] = uvs[i * 2 + 1];
+        }
+        return out;
+    }
 }

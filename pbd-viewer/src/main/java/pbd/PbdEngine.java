@@ -1,5 +1,6 @@
 package pbd;
 
+import org.joml.Vector3f;
 import pbd.format.MaterialRegistry;
 import pbd.format.ModifierRegistry;
 import pbd.format.PbdAssetFormat;
@@ -154,6 +155,176 @@ public final class PbdEngine {
 
         public String type(String instanceName) {
             return find(instanceName).type;
+        }
+
+        /** Degrees, matching rot= in the text format - NOT radians. */
+        public float[] rotation(String instanceName) {
+            Vector3f r = find(instanceName).rotationDeg;
+            return new float[]{r.x, r.y, r.z};
+        }
+
+        public void setRotation(String instanceName, float xDeg, float yDeg, float zDeg) {
+            find(instanceName).rotationDeg.set(xDeg, yDeg, zDeg);
+        }
+
+        public float[] scale(String instanceName) {
+            Vector3f s = find(instanceName).scale;
+            return new float[]{s.x, s.y, s.z};
+        }
+
+        public void setScale(String instanceName, float x, float y, float z) {
+            find(instanceName).scale.set(x, y, z);
+        }
+
+        /** Null if this instance never had mat= set (falls back to
+         * whatever MaterialRegistry treats as its default at render
+         * time, not resolved here). */
+        public String material(String instanceName) {
+            return find(instanceName).material;
+        }
+
+        public void setMaterial(String instanceName, String materialName) {
+            find(instanceName).material = materialName;
+        }
+
+        public String category(String instanceName) {
+            return find(instanceName).category;
+        }
+
+        public void setCategory(String instanceName, String category) {
+            find(instanceName).category = category;
+        }
+
+        /** Name of this instance's PBD parent (see parent= in the text
+         * format), or null if it's a root instance. Resolved from
+         * parentIndex through instanceNames() rather than exposing the
+         * index itself, which is only meaningful post-
+         * resolveHierarchy() and not something a modder should need to
+         * think about. */
+        public String parent(String instanceName) {
+            PbdInstance inst = find(instanceName);
+            if (inst.parentIndex < 0 || inst.parentIndex >= scene.instances.size()) return null;
+            return scene.instances.get(inst.parentIndex).id;
+        }
+
+        /** Pass null to make this instance a root (no parent). Throws
+         * the same IllegalArgumentException as find() if parentName
+         * doesn't exist - NOT if it would create a cycle (this facade
+         * doesn't walk the chain to check; PbdScene.resolveHierarchy
+         * remains the actual authority the engine relies on, this is
+         * just convenient wiring, not a substitute validator). */
+        public void setParent(String instanceName, String parentName) {
+            PbdInstance inst = find(instanceName);
+            inst.parentIndex = (parentName == null) ? -1 : scene.instances.indexOf(find(parentName));
+        }
+
+        /** false (never null) for an instance that never set
+         * indestructible=true - matches PbdInstance's own default,
+         * not a tri-state. */
+        public boolean indestructible(String instanceName) {
+            return find(instanceName).indestructible;
+        }
+
+        public void setIndestructible(String instanceName, boolean indestructible) {
+            find(instanceName).indestructible = indestructible;
+        }
+
+        /** Null when never set (see PbdInstance's own doc on why
+         * "never given" and "explicitly zero" are kept distinct) -
+         * only meaningful when indestructible(instanceName) is true. */
+        public Float hardness(String instanceName) { return find(instanceName).hardness; }
+        public Float resistance(String instanceName) { return find(instanceName).resistance; }
+        public void setHardness(String instanceName, Float hardness) { find(instanceName).hardness = hardness; }
+        public void setResistance(String instanceName, Float resistance) { find(instanceName).resistance = resistance; }
+
+        /** "point", "spot", or null if this instance isn't a light at
+         * all (see PrimitiveRegistry - a light is its own primitive
+         * type, so this and isLight() below usually agree with
+         * type(instanceName).equals("light"), but a scene built by
+         * hand rather than through addInstance/setType could in
+         * principle set light fields on some other type too - this
+         * facade doesn't forbid that, same as the text format itself
+         * doesn't). */
+        public String lightMode(String instanceName) { return find(instanceName).lightMode; }
+        public void setLightMode(String instanceName, String mode) {
+            if (!"point".equals(mode) && !"spot".equals(mode)) {
+                throw new IllegalArgumentException("lightMode must be \"point\" or \"spot\", got \"" + mode + "\"");
+            }
+            find(instanceName).lightMode = mode;
+        }
+
+        public boolean isLight(String instanceName) { return "light".equals(type(instanceName)); }
+
+        public boolean isLightEnabled(String instanceName) { return find(instanceName).lightEnabled; }
+        public void setLightEnabled(String instanceName, boolean enabled) { find(instanceName).lightEnabled = enabled; }
+        /** Flips lightEnabled and returns the NEW state, so a caller
+         * wiring this to a switch/interaction doesn't need a separate
+         * isLightEnabled call first to know what just happened. */
+        public boolean toggleLight(String instanceName) {
+            PbdInstance inst = find(instanceName);
+            inst.lightEnabled = !inst.lightEnabled;
+            return inst.lightEnabled;
+        }
+
+        /** {r, g, b}, 0..1 each, or null if never set. */
+        public float[] lightColor(String instanceName) {
+            Vector3f c = find(instanceName).lightColor;
+            return c == null ? null : new float[]{c.x, c.y, c.z};
+        }
+
+        public void setLightColor(String instanceName, float r, float g, float b) {
+            PbdInstance inst = find(instanceName);
+            if (inst.lightColor == null) inst.lightColor = new Vector3f();
+            inst.lightColor.set(r, g, b);
+        }
+
+        public Float lightIntensity(String instanceName) { return find(instanceName).lightIntensity; }
+        public void setLightIntensity(String instanceName, float intensity) { find(instanceName).lightIntensity = intensity; }
+        public Float lightRange(String instanceName) { return find(instanceName).lightRange; }
+        public void setLightRange(String instanceName, float range) { find(instanceName).lightRange = range; }
+        /** Degrees (half-angle of the cone) - only meaningful when lightMode is "spot". */
+        public Float lightSpotAngle(String instanceName) { return find(instanceName).lightSpotAngleDeg; }
+        public void setLightSpotAngle(String instanceName, float degrees) { find(instanceName).lightSpotAngleDeg = degrees; }
+
+        public boolean hasInstance(String instanceName) {
+            for (PbdInstance inst : scene.instances) if (inst.id.equals(instanceName)) return true;
+            return false;
+        }
+
+        /** Creates and appends a new root instance of the given
+         * primitive type (must already be known to this engine's own
+         * primitiveRegistry() - "cube", "light", etc.; see
+         * PrimitiveRegistry.isKnown if a caller wants to check first
+         * rather than catch), at the origin with default rotation/
+         * scale, and returns its name for immediate chaining (e.g.
+         * scene.setPosition(scene.addInstance("cube", "myBox"), 1, 2, 3)).
+         * Throws IllegalArgumentException, not a silent no-op, for a
+         * duplicate name - two instances sharing an id is a real
+         * correctness problem downstream (parent=/pbd_ref resolution
+         * both look instances up BY that id), not a cosmetic one. */
+        public String addInstance(String type, String instanceName) {
+            if (!primitiveRegistry.isKnown(type)) {
+                throw new IllegalArgumentException("Unknown primitive type '" + type + "' - known types: "
+                    + "see PrimitiveRegistry, or call an engine-level register() first for a custom one");
+            }
+            if (hasInstance(instanceName)) {
+                throw new IllegalArgumentException("An instance named '" + instanceName + "' already exists in this scene");
+            }
+            PbdInstance inst = new PbdInstance(instanceName, type);
+            scene.instances.add(inst);
+            return inst.id;
+        }
+
+        /** True if an instance with this name existed and was removed.
+         * Does NOT reparent or otherwise fix up any instance that had
+         * this one as its parent= - those instances' parentIndex would
+         * now point at whatever shifted into this slot, so re-running
+         * PbdScene.resolveHierarchy (or reassigning setParent
+         * explicitly on any former children first) is the caller's own
+         * responsibility, same as hand-editing the instances list via
+         * raw() would require. */
+        public boolean removeInstance(String instanceName) {
+            return scene.instances.removeIf(inst -> inst.id.equals(instanceName));
         }
 
         /** Scene-level metadata - name/kind/authors/origin (see

@@ -32,11 +32,12 @@ public final class PbdSerializer {
 
         sb.append("pbd_version").append(' ').append('1').append(nl);
         if (scene.name != null) sb.append("name").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.name)).append(nl);
-        if (scene.kind != null) sb.append("kind").append(sp).append('=').append(sp).append(scene.kind).append(nl);
+        if (scene.kind != null) sb.append("kind").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.kind)).append(nl);
         for (String author : scene.authors) {
             sb.append("author").append(sp).append('=').append(sp).append(quoteIfNeeded(author)).append(nl);
         }
         if (scene.origin != null) sb.append("origin").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.origin)).append(nl);
+        if (scene.description != null) sb.append("description").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.description)).append(nl);
         // include_material uses "key value" (space-separated, no "="),
         // matching how it's actually written - see PbdParser's
         // parseIncludeMaterial, which reads the path via readRawValue()
@@ -70,6 +71,17 @@ public final class PbdSerializer {
         if (inst.parentId != null) sb.append(indent).append("parent").append(sp).append('=').append(sp).append(inst.parentId).append(nl);
         if (inst.lod != null) sb.append(indent).append("lod").append(sp).append('=').append(sp).append(inst.lod).append(nl);
         if (inst.category != null) sb.append(indent).append("category").append(sp).append('=').append(sp).append(quoteIfNeeded(inst.category)).append(nl);
+        if (inst.indestructible) sb.append(indent).append("indestructible").append(sp).append('=').append(sp).append("true").append(nl);
+        if (inst.hardness != null) sb.append(indent).append("hardness").append(sp).append('=').append(sp).append(inst.hardness).append(nl);
+        if (inst.resistance != null) sb.append(indent).append("resistance").append(sp).append('=').append(sp).append(inst.resistance).append(nl);
+        if (inst.lightMode != null) {
+            sb.append(indent).append("lightMode").append(sp).append('=').append(sp).append(inst.lightMode).append(nl);
+            if (!inst.lightEnabled) sb.append(indent).append("lightEnabled").append(sp).append('=').append(sp).append("false").append(nl);
+            if (inst.lightColor != null) sb.append(indent).append("lightColor").append(sp).append('=').append(sp).append(vec3(inst.lightColor)).append(nl);
+            if (inst.lightIntensity != null) sb.append(indent).append("lightIntensity").append(sp).append('=').append(sp).append(inst.lightIntensity).append(nl);
+            if (inst.lightRange != null) sb.append(indent).append("lightRange").append(sp).append('=').append(sp).append(inst.lightRange).append(nl);
+            if (inst.lightSpotAngleDeg != null) sb.append(indent).append("lightSpotAngle").append(sp).append('=').append(sp).append(inst.lightSpotAngleDeg).append(nl);
+        }
 
         sb.append(indent).append("pos").append(sp).append('=').append(sp).append(vec3(inst.position)).append(nl);
         if (inst.rotationDeg.x != 0 || inst.rotationDeg.y != 0 || inst.rotationDeg.z != 0) {
