@@ -22,6 +22,18 @@ public final class PbdMatParser {
     private String src;
     private int pos;
     private int line;
+    /** Every author= line found before the first material block -
+     * public, populated during parse()/parseFile(), read by the
+     * caller afterward (PbdParser.parseIncludeMaterial) rather than
+     * folded into the Map<String,Map<String,String>> return type,
+     * since that type is keyed by material name and has no natural
+     * slot for file-level metadata. Required to be non-empty by
+     * upload.php's own server-side validation once a .pbdmat is
+     * actually submitted (see that file's own doc) - a .pbdmat can be
+     * included by scenes OTHER than the one that first wrote it, so it
+     * needs its own attribution rather than borrowing whichever .pbd
+     * happens to be sitting next to it. */
+    public java.util.List<String> authors = new java.util.ArrayList<>();
 
     public Map<String, Map<String, String>> parseFile(Path path) throws IOException {
         return parse(Files.readString(path));
@@ -31,10 +43,24 @@ public final class PbdMatParser {
         this.src = text;
         this.pos = 0;
         this.line = 1;
+        this.authors = new java.util.ArrayList<>();
 
         Map<String, Map<String, String>> materials = new LinkedHashMap<>();
 
         skipWhitespaceAndComments();
+        // Optional, repeatable author= line(s) before the first
+        // material block - same keyword, same repeatable-field
+        // convention as the main .pbd format's own scene-level
+        // author= (see PbdParser/PbdScene), but this is the ONLY
+        // metadata field a .pbdmat recognizes; anything else at this
+        // position still isn't a material block and still isn't
+        // understood, so it still throws below exactly as before.
+        while (!atEnd() && peekIdentifier().equals("author")) {
+            readIdentifier();
+            expect('=');
+            authors.add(readMetadataValue());
+            skipWhitespaceAndComments();
+        }
         while (!atEnd()) {
             String keyword = readIdentifier();
             if (!keyword.equals("material")) {
@@ -80,6 +106,39 @@ public final class PbdMatParser {
             while (!atEnd() && !isStructural(peek()) && !Character.isWhitespace(peek())) pos++;
         }
         return src.substring(start, pos).trim();
+    }
+
+    /** Same fix as PbdParser's own readMetadataValue, same reason - an
+     * unquoted author= is naturally multi-word ("Jean Dupont", not
+     * "Jean" then a stray "Dupont" identifier the next loop iteration
+     * would fail on trying to read as a material keyword). Only used
+     * for author= here; every material field (color=, texture=, ...)
+     * keeps using readRawValue's own single-token behavior, which is
+     * correct for those. */
+    private String readMetadataValue() {
+        skipWhitespaceAndComments();
+        if (peek() == '"') return readRawValue();
+        int start = pos;
+        while (!atEnd() && peek() != '\n' && peek() != '#') pos++;
+        return src.substring(start, pos).trim();
+    }
+
+    /** Looks at the next identifier-like token WITHOUT consuming it -
+     * used only to decide whether the next top-level thing is an
+     * author= line (consumed properly afterward by readIdentifier) or
+     * the start of a material block, without committing to either
+     * read first. Returns "" at end of input, never a token "material"
+     * or "author" themselves could collide with. */
+    private String peekIdentifier() {
+        int savedPos = pos;
+        int savedLine = line;
+        skipWhitespaceAndComments();
+        int start = pos;
+        while (!atEnd() && !isStructural(peek()) && !Character.isWhitespace(peek())) pos++;
+        String result = src.substring(start, pos);
+        pos = savedPos;
+        line = savedLine;
+        return result;
     }
 
     private boolean atEnd() { return pos >= src.length(); }

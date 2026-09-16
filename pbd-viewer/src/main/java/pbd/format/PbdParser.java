@@ -541,7 +541,20 @@ public final class PbdParser {
             resolved = baseDir.resolve(rawPath).toAbsolutePath().normalize();
         }
         try {
-            Map<String, Map<String, String>> loaded = new PbdMatParser().parseFile(resolved);
+            PbdMatParser matParser = new PbdMatParser();
+            Map<String, Map<String, String>> loaded = matParser.parseFile(resolved);
+            // Attribution from the .pbdmat itself, merged into the
+            // including scene's own author list (not replacing it) -
+            // a .pbdmat can be authored by someone other than whoever
+            // wrote the .pbd including it, and the final combined work
+            // should credit both, not just whichever one happened to
+            // be read last. Order-preserving de-dup: scene.authors is
+            // a List, and a name appearing on both sides (the common
+            // case - the same person usually writes both) shouldn't
+            // show up twice.
+            for (String matAuthor : matParser.authors) {
+                if (!scene.authors.contains(matAuthor)) scene.authors.add(matAuthor);
+            }
             for (Map<String, String> fields : loaded.values()) {
                 for (String key : new String[]{"texture", "normalMap", "roughnessMap", "displacementMap"}) {
                     String filename = fields.get(key);
