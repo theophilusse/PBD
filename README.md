@@ -39,7 +39,7 @@ both.
 - **A Java engine** (LWJGL/OpenGL) that loads and renders `.pbd` /
   `.pbdbin` / `.pbdasset` directly - procedural primitives are
   tessellated and cached, not pre-baked to disk.
-- **A Blender add-on** (`tools/blender-addon/pbd_tools/`) to author
+- **A Blender add-on** to author
   scenes: place primitives, assign materials, keyframe animations,
   and export back to any of the three formats - including straight
   back into `.pbdasset`/`.pbdbin`, which the add-on can also
@@ -78,11 +78,7 @@ equivalent for at all, not just a smaller version of:
 
 ## Status
 
-**As of September 2026, this is not part of the PZFPS mod.** It was
-proposed to that mod's team and turned down - existing contributors
-are already comfortable with their current traditional-mesh pipeline,
-and introducing a second format was, reasonably, judged not worth the
-disruption at this stage. This repository is an independent,
+This repository is an independent,
 standalone project: the engine, format, and tooling all work without
 PZFPS and don't depend on it.
 
@@ -97,25 +93,8 @@ above as not yet implemented rather than assuming it's covered.
 - **Format reference:** `docs/PBD_FORMAT_SPEC.md`
 - **Engine internals / building from source:** `docs/ENGINE_DEV_GUIDE.md`
 - **Blender add-on usage:** `docs/ADDON_USER_GUIDE.md`
-- **Asset sharing site (pbd.mazetrojan.fr) source:** `server/` - upload
-  review, moderation, and browsing for shared assets; see its own
-  README for setup.
+- **Asset sharing site (pbd.mazetrojan.fr)**
 
 ```bash
 ./gradlew run --args="path/to/scene.pbd"
 ```
-
-## Contributing
-
-Issues and PRs are welcome - this is exactly the kind of project that
-benefits from more eyes on the format and more real assets tested
-against it. If you're planning something larger than a small fix,
-opening an issue first to discuss it is worth doing before investing
-a lot of time into it.
-
-## License
-
-Not yet chosen - add a `LICENSE` file before relying on this being
-open source in any formal sense. Given the pitch to potential
-contributors, an OSI-approved permissive license (MIT, Apache-2.0) is
-worth picking soon rather than leaving this unspecified.
