@@ -214,6 +214,16 @@ public final class Main {
              TextRenderer text = new TextRenderer(Path.of("src/main/resources/shaders/text"))) {
 
             renderer.upload(scene, primitiveRegistry, modifierRegistry, materialRegistry);
+            // Prints ONCE per scene load, unconditionally - the single
+            // most useful line if E/G/H logging is reported as never
+            // appearing at all: if this ALSO doesn't show up, the
+            // running jar predates this source entirely (a stale
+            // build, not a bug in the key-handling code itself) - a
+            // question worth settling in one obvious line rather than
+            // continuing to reason about justPressed()/key-check
+            // placement against code that might not even be what's
+            // actually running.
+            System.out.println("[Build] pbd-benchmark E/G/H diagnostic build - if you don't see per-frame [KeyState] lines below within a few seconds, rebuild before testing further");
             applyLodPreset(renderer);
             pbd.audio.SoundPlayer soundPlayer = new pbd.audio.SoundPlayer(Path.of("src/main/resources/sounds"));
             renderer.soundPlayer = soundPlayer;
@@ -322,10 +332,34 @@ public final class Main {
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
             float smoothedFps = 60f;
+            float keyStateLogTimer = 0f;
 
             while (!window.shouldClose()) {
                 float dt = input.beginFrame(window);
                 input.applyLookAndMove(camera, dt);
+
+                // Raw keysDown state (NOT justPressed's own edge-detected
+                // "was it pressed THIS frame" logic) for E/G/H
+                // specifically, printed every ~2 seconds regardless of
+                // whether anything was pressed - deliberately independent
+                // of justPressed() so this can't be hiding the same bug
+                // it would be checking for. If E/G/H logging is reported
+                // as silent, this line confirms two separate things at
+                // once: the loop is alive at all (it prints on its own,
+                // unprompted), and whether physically holding one of
+                // these keys down ever flips its OWN raw boolean to true
+                // - if it doesn't, the problem is upstream of this whole
+                // file, in GLFW's own key callback registration; if it
+                // does, but justPressed(...) still never fires an
+                // if-block, the bug is specifically in justPressed's own
+                // edge-detection (keysDownPrev handling).
+                keyStateLogTimer += dt;
+                if (keyStateLogTimer >= 2.0f) {
+                    keyStateLogTimer = 0f;
+                    System.out.println("[KeyState] raw E=" + keysDown[GLFW_KEY_E]
+                        + " G=" + keysDown[GLFW_KEY_G] + " H=" + keysDown[GLFW_KEY_H]
+                        + " (this line prints every ~2s regardless of input - if you never see it at all, the loop itself isn't running this build)");
+                }
 
                 if (justPressed(GLFW_KEY_N)) {
                     nextScenePath = siblingPbdFile(scenePath, +1);
@@ -578,9 +612,23 @@ public final class Main {
                         java.util.List<Vector3f> boxWorldCenters = new java.util.ArrayList<>();
                         java.util.List<org.joml.Quaternionf> boxWorldRotations = new java.util.ArrayList<>();
                         for (int idx : contents.metaIndices) {
-                            boxWorldCenters.add(renderer.instanceWorldCenter(idx));
-                            boxWorldRotations.add(renderer.instanceWorldRotation(idx));
+                            Vector3f center = renderer.instanceWorldCenter(idx);
+                            org.joml.Quaternionf rot = renderer.instanceWorldRotation(idx);
+                            boxWorldCenters.add(center);
+                            boxWorldRotations.add(rot);
+                            // The container's OWN transform, fresh every
+                            // press - if the box holding these items has
+                            // moved/rotated since the items were placed
+                            // (or if instanceWorldCenter/Rotation return
+                            // something clearly wrong - NaN, a position
+                            // nowhere near where this container visually
+                            // is), that would surface right here, BEFORE
+                            // ever reaching a single item's own distance
+                            // check inside removeNearestToRay.
+                            System.out.println("  [E-key] container instance #" + idx + " world center=" + center
+                                + " rotation(xyzw)=" + rot.x + "," + rot.y + "," + rot.z + "," + rot.w);
                         }
+                        System.out.println("  [E-key] group has " + contents.items.size() + " item(s) placed in it");
                         String removed = contents.removeNearestToRay(boxWorldCenters, boxWorldRotations, camera.position, camera.forward());
                         if (removed != null) {
                             System.out.println("[Container] Removed " + removed);
@@ -689,6 +737,27 @@ public final class Main {
                 }
 
                 window.swapBuffers();
+
+                // THE fix for the reported "E/G/H raw key state flips to
+                // true, but the actual action never fires" bug -
+                // keysDownPrev was declared but never actually written
+                // to anywhere in this file (confirmed by grep: the only
+                // OTHER reference to it was the read inside justPressed
+                // itself), meaning it stayed at its default all-false
+                // forever. !keysDownPrev[key] was therefore unconditionally
+                // true, which doesn't itself explain "never fires" on
+                // its own (if anything it should have made justPressed
+                // fire on EVERY frame a key was held, not zero) - but it
+                // is unambiguously wrong regardless of exactly how its
+                // symptom actually presented, and correct edge-detection
+                // semantics need this synced at the end of every frame,
+                // after this frame's own justPressed(...) checks have
+                // already run against the PREVIOUS frame's snapshot -
+                // syncing any earlier would make a key's own true state
+                // this frame instantly overwrite what THIS frame needed
+                // to compare against, collapsing "was down last frame" to
+                // "is down right now" before it was ever consulted.
+                System.arraycopy(keysDown, 0, keysDownPrev, 0, keysDown.length);
             }
         }
         // Resets the static, cross-window key state before returning to

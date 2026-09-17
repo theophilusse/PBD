@@ -599,36 +599,83 @@ public final class PbdRenderer implements AutoCloseable {
      * closest hit's instance index, or -1 - the "shoot to test the
      * primitive->voxel transform" trigger (Main.java) uses this to find
      * what to voxelize. */
+    /** Verbose per-instance logging on every call - the G key's own
+     * raycast, deliberately as detailed as removeNearestToRay's own
+     * per-item log (see that method's doc) and for the same reason: a
+     * repeated report that this finds nothing, with no crash and
+     * nothing wrong found by code review alone, means the next useful
+     * step is seeing the ACTUAL numbers from a real run, not another
+     * theory. Specifically separates "skipped before any geometry
+     * test" (indestructible/no-geometry-type/metadata-volume) from
+     * "geometry test ran and missed" (t < 0, ray-box gave no hit) -
+     * exactly the distinction between "the trigger/raycast system"
+     * and "the underlying voxel/destruction system" a bug report on
+     * this exact question asked for: if every candidate instance logs
+     * as SKIPPED, the raycast never even reaches a real geometry test;
+     * if instances log as TESTED-MISSED, the geometry test itself is
+     * where to look; if something logs HIT here but G still visibly
+     * does nothing, the bug is downstream in voxelize()/rendering, not
+     * in this method at all. */
     public int findDestructibleAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
         int closestIndex = -1;
         float closestDist = Float.MAX_VALUE;
+        System.out.println("[G-key] ray origin=" + rayOrigin + " dir=" + rayDir
+            + " checking " + scene.instances.size() + " instance(s)");
         for (int i = 0; i < scene.instances.size(); i++) {
             pbd.format.PbdInstance inst = scene.instances.get(i);
-            if (inst.indestructible) continue;
-            if ("ref".equals(inst.type) || "group".equals(inst.type) || "light".equals(inst.type)) continue; // no geometry of their own to hit
-            if ("true".equals(inst.params.get("metadata"))) continue; // an invisible bin-packing volume, not something a shot should ever land on
+            if (inst.indestructible) {
+                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (indestructible=true)");
+                continue;
+            }
+            if ("ref".equals(inst.type) || "group".equals(inst.type) || "light".equals(inst.type)) {
+                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (type=" + inst.type + ", no geometry of its own to hit)");
+                continue;
+            }
+            if ("true".equals(inst.params.get("metadata"))) {
+                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (metadata=true, an invisible bin-packing volume)");
+                continue;
+            }
 
             Matrix4f invWorld = new Matrix4f(worldTransforms[i]).invert();
             Vector3f localOrigin = invWorld.transformPosition(new Vector3f(rayOrigin));
             Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
 
             float t = rayBoxIntersection(localOrigin, localDir, -0.5f, 0.5f);
-            if (t < 0) continue;
+            if (t < 0) {
+                System.out.println("  #" + i + " '" + inst.id + "' type=" + inst.type
+                    + " world-pos=" + worldTransforms[i].getTranslation(new Vector3f())
+                    + " TESTED-MISSED (local ray-box test found no hit)");
+                continue;
+            }
 
             Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
             Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
             float worldDist = worldHit.distance(rayOrigin);
+            System.out.println("  #" + i + " '" + inst.id + "' type=" + inst.type
+                + " HIT at world-dist=" + worldDist);
             if (worldDist < closestDist) {
                 closestDist = worldDist;
                 closestIndex = i;
             }
         }
+        System.out.println("[G-key] closest hit: " + (closestIndex < 0 ? "NONE" : "#" + closestIndex + " '" + scene.instances.get(closestIndex).id + "'"));
         return closestIndex;
     }
 
+    /** Same per-instance verbosity as findDestructibleAlongRay just
+     * above, for the same reason - H (Hide) has the identical class of
+     * reported symptom (nothing happens, no crash), so it gets the
+     * same "which instances even qualify, which were geometry-tested
+     * and missed" breakdown. */
     public int findMetadataCubeAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
         int closestIndex = -1;
         float closestDist = Float.MAX_VALUE;
+        int metadataCount = 0;
+        for (int i = 0; i < scene.instances.size(); i++) {
+            if ("true".equals(scene.instances.get(i).params.get("metadata"))) metadataCount++;
+        }
+        System.out.println("[H-key] ray origin=" + rayOrigin + " dir=" + rayDir
+            + " - " + metadataCount + " metadata (container) instance(s) in this scene");
         for (int i = 0; i < scene.instances.size(); i++) {
             if (!"true".equals(scene.instances.get(i).params.get("metadata"))) continue;
 
@@ -637,16 +684,23 @@ public final class PbdRenderer implements AutoCloseable {
             Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
 
             float t = rayBoxIntersection(localOrigin, localDir, -0.5f, 0.5f); // exact canonical bounds, no margin - a container's actual volume, not a slightly-generous click target like a door
-            if (t < 0) continue;
+            if (t < 0) {
+                System.out.println("  #" + i + " '" + scene.instances.get(i).id + "'"
+                    + " world-pos=" + worldTransforms[i].getTranslation(new Vector3f())
+                    + " TESTED-MISSED");
+                continue;
+            }
 
             Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
             Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
             float worldDist = worldHit.distance(rayOrigin);
+            System.out.println("  #" + i + " '" + scene.instances.get(i).id + "' HIT at world-dist=" + worldDist);
             if (worldDist < closestDist) {
                 closestDist = worldDist;
                 closestIndex = i;
             }
         }
+        System.out.println("[H-key] closest hit: " + (closestIndex < 0 ? "NONE" : "#" + closestIndex + " '" + scene.instances.get(closestIndex).id + "'"));
         return closestIndex;
     }
 

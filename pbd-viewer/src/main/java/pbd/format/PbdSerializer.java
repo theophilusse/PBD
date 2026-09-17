@@ -31,13 +31,13 @@ public final class PbdSerializer {
         String sp = pretty ? " " : "";
 
         sb.append("pbd_version").append(' ').append('1').append(nl);
-        if (scene.name != null) sb.append("name").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.name)).append(nl);
-        if (scene.kind != null) sb.append("kind").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.kind)).append(nl);
+        if (scene.name != null) sb.append("name").append(sp).append('=').append(sp).append(quoteMetadataValue(scene.name)).append(nl);
+        if (scene.kind != null) sb.append("kind").append(sp).append('=').append(sp).append(quoteMetadataValue(scene.kind)).append(nl);
         for (String author : scene.authors) {
-            sb.append("author").append(sp).append('=').append(sp).append(quoteIfNeeded(author)).append(nl);
+            sb.append("author").append(sp).append('=').append(sp).append(quoteMetadataValue(author)).append(nl);
         }
-        if (scene.origin != null) sb.append("origin").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.origin)).append(nl);
-        if (scene.description != null) sb.append("description").append(sp).append('=').append(sp).append(quoteIfNeeded(scene.description)).append(nl);
+        if (scene.origin != null) sb.append("origin").append(sp).append('=').append(sp).append(quoteMetadataValue(scene.origin)).append(nl);
+        if (scene.description != null) sb.append("description").append(sp).append('=').append(sp).append(quoteMetadataValue(scene.description)).append(nl);
         // include_material uses "key value" (space-separated, no "="),
         // matching how it's actually written - see PbdParser's
         // parseIncludeMaterial, which reads the path via readRawValue()
@@ -139,5 +139,26 @@ public final class PbdSerializer {
 
     private String quoteIfNeeded(String s) {
         return s.contains(" ") || s.isEmpty() ? "\"" + s + "\"" : s;
+    }
+
+    /** quoteIfNeeded's own "only if it contains a space" rule is only
+     * safe in PRETTY mode, where each field ends at a real newline
+     * regardless of whether it's quoted. Minified mode's own "nl" is
+     * just a single space (see this method's own field above) - there
+     * is no newline ANYWHERE in a fully minified file, so an unquoted
+     * metadata value (read back via PbdParser's own readMetadataValue,
+     * which reads an unquoted value to the next \n or end of input)
+     * would swallow not just the rest of its own line but the ENTIRE
+     * REST OF THE FILE, every instance in it included. Caught by a
+     * real reproduction: a pbd_ref pointing at a .pbdbin - always
+     * minified - lost every one of its sub-scene's instances, because
+     * author=A (one letter, no space, so quoteIfNeeded alone saw
+     * nothing needing quotes) had consumed the entire remainder of the
+     * file as its own value. So in minified mode this ALWAYS quotes,
+     * regardless of content - the one thing pretty mode's own rule
+     * gets to skip precisely because a real newline is always there to
+     * fall back on instead. */
+    private String quoteMetadataValue(String s) {
+        return pretty ? quoteIfNeeded(s) : "\"" + s + "\"";
     }
 }

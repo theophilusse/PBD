@@ -463,17 +463,59 @@ public final class PbdParser {
         PbdScene subScene;
         try {
             String subText;
-            try {
-                subText = Files.readString(resolved);
-            } catch (IOException e) {
-                throw error("pbd_ref '" + refId + "' could not read '" + resolved + "': " + e.getMessage());
+            // Same three-format detection as PbdEngine.loadAny - a
+            // pbd_ref's source= previously only ever worked for plain
+            // .pbd text (Files.readString on whatever's there, which
+            // for a .pbdbin or .pbdasset is either gibberish or a ZIP's
+            // raw bytes, neither of which parses as PBD text), unlike
+            // every OTHER entry point into this engine, which already
+            // understands all three. Fixed here rather than left as a
+            // silent gap once it mattered for real: the Blender add-on's
+            // own "Include" import mode (see IMPORT_OT_pbd/
+            // IMPORT_OT_pbdmat) needs source= to work for whichever of
+            // the three formats the user actually picked, not just one
+            // of them.
+            String lowerResolved = resolved.getFileName().toString().toLowerCase();
+            Path subDir;
+            if (lowerResolved.endsWith(".pbdbin")) {
+                try {
+                    subText = pbd.format.PbdBinFormat.decompressToText(resolved);
+                } catch (IOException e) {
+                    throw error("pbd_ref '" + refId + "' could not read '" + resolved + "' as .pbdbin: " + e.getMessage());
+                }
+                subDir = isRemote ? null : resolved.getParent();
+            } else if (lowerResolved.endsWith(".pbdasset")) {
+                try {
+                    java.nio.file.Path tempDir = Files.createTempDirectory("pbdref-asset-");
+                    pbd.format.PbdAssetFormat.UnpackResult unpacked = pbd.format.PbdAssetFormat.unpack(resolved, tempDir);
+                    if (unpacked.scenePbd == null) {
+                        throw error("pbd_ref '" + refId + "': '" + resolved + "' has no scene.pbd entry - not a valid .pbdasset");
+                    }
+                    subText = Files.readString(unpacked.scenePbd);
+                    // The EXTRACTED bundle's own directory, not
+                    // resolved's original one - a .pbdasset's whole
+                    // point is bundling its materials/textures alongside
+                    // scene.pbd inside the zip itself (see that format's
+                    // own doc), so relative references inside it need to
+                    // resolve against where THOSE landed, not wherever
+                    // the .pbdasset file itself happened to be sitting.
+                    subDir = tempDir;
+                } catch (IOException e) {
+                    throw error("pbd_ref '" + refId + "' could not read '" + resolved + "' as .pbdasset: " + e.getMessage());
+                }
+            } else {
+                try {
+                    subText = Files.readString(resolved);
+                } catch (IOException e) {
+                    throw error("pbd_ref '" + refId + "' could not read '" + resolved + "': " + e.getMessage());
+                }
+                subDir = isRemote ? null : resolved.getParent();
             }
             // isRemote's subDir/subUrl split: a fetched file's own nested
             // relative refs resolve against ITS url, not the local cache
             // directory the fetch happened to land in (that cache path is
             // an implementation detail, never meant to be resolved
             // against as if it were the content's real home).
-            Path subDir = isRemote ? null : resolved.getParent();
             String subUrl = isRemote ? resolvedUrl : null;
             subScene = new PbdParser(primitiveRegistry, modifierRegistry)
                 .parseInternal(subText, subDir, subUrl, includeStack);

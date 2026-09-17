@@ -52,6 +52,32 @@ public final class PbdBinFormat {
     }
 
     public static PbdScene read(Path inputPath, PrimitiveRegistry primitiveRegistry, ModifierRegistry modifierRegistry) throws IOException {
+        String text = decompressToText(inputPath);
+        // baseDir = the .pbdbin's OWN directory, not null - a relative
+        // include_material now round-trips through PbdSerializer (see
+        // its own comment), so it needs somewhere real to resolve
+        // against, exactly like a plain .pbd loaded via parseFile
+        // would use ITS OWN directory. Keep the referenced .pbdmat
+        // alongside the .pbdbin (same relative layout the original .pbd
+        // had it in) for materials to actually load - .pbdbin was never
+        // meant to be self-contained regarding materials the way
+        // .pbdasset is (see that format's own doc comment); it's a
+        // compressed TEXT alternative to .pbd, with the same external-
+        // reference behavior .pbd itself has, not a bundle.
+        return new PbdParser(primitiveRegistry, modifierRegistry).parse(text, inputPath.toAbsolutePath().getParent());
+    }
+
+    /** Just the magic-header check + gzip decompression, no parsing -
+     * split out from read() above so PbdParser.parsePbdRef can resolve
+     * a source= pointing at a .pbdbin the exact same way it already
+     * resolves a plain .pbd (both end up as a text string fed through
+     * the same parseInternal), rather than pbd_ref being limited to
+     * plain-.pbd sources only while every OTHER entry point
+     * (PbdEngine.loadAny) already understands all three formats. read()
+     * itself is unchanged in behavior - it's this same decompression,
+     * just now followed by the parse step separately instead of
+     * inline. */
+    public static String decompressToText(Path inputPath) throws IOException {
         byte[] all = Files.readAllBytes(inputPath);
         if (all.length < 5 || all[0] != MAGIC[0] || all[1] != MAGIC[1] || all[2] != MAGIC[2] || all[3] != MAGIC[3]) {
             throw new IOException("Not a .pbdbin file (missing PBDB magic header): " + inputPath);
@@ -66,19 +92,6 @@ public final class PbdBinFormat {
         try (GZIPInputStream gzip = new GZIPInputStream(new java.io.ByteArrayInputStream(gzipped))) {
             gzip.transferTo(decompressed);
         }
-
-        String text = decompressed.toString(StandardCharsets.UTF_8);
-        // baseDir = the .pbdbin's OWN directory, not null - a relative
-        // include_material now round-trips through PbdSerializer (see
-        // its own comment), so it needs somewhere real to resolve
-        // against, exactly like a plain .pbd loaded via parseFile
-        // would use ITS OWN directory. Keep the referenced .pbdmat
-        // alongside the .pbdbin (same relative layout the original .pbd
-        // had it in) for materials to actually load - .pbdbin was never
-        // meant to be self-contained regarding materials the way
-        // .pbdasset is (see that format's own doc comment); it's a
-        // compressed TEXT alternative to .pbd, with the same external-
-        // reference behavior .pbd itself has, not a bundle.
-        return new PbdParser(primitiveRegistry, modifierRegistry).parse(text, inputPath.toAbsolutePath().getParent());
+        return decompressed.toString(StandardCharsets.UTF_8);
     }
 }
