@@ -120,7 +120,74 @@ public final class Main {
     private static final float MIN_HIDE_DIMENSION = 0.4f;
 
     private static final boolean[] keysDown = new boolean[GLFW_KEY_LAST + 1];
-    private static final boolean[] keysDownPrev = new boolean[GLFW_KEY_LAST + 1];
+    private static final boolean[] keysJustPressed = new boolean[GLFW_KEY_LAST + 1];
+
+    /** Promoted from a runPbdViewer-local variable to a static field
+     * specifically so the new getContainerItems/removeContainerItem
+     * facade methods below can reach it - a local variable has no way
+     * to be queried from outside the exact stack frame it's declared
+     * in, which a facade meant to be called independently of the game
+     * loop's own call stack fundamentally can't work with. Cleared (not
+     * re-declared) at the top of each runPbdViewer call, since N/B
+     * scene-cycling re-enters that method for a new scene, and a
+     * PREVIOUS scene's own opened containers have no meaning once
+     * everything they refer to (scene.instances, worldTransforms, ...)
+     * has been replaced. */
+    private static final java.util.Map<java.util.List<Integer>, pbd.pz.ContainerContents> containerContents = new java.util.HashMap<>();
+
+    /** Every currently-loaded item across every open container, right
+     * now - the "getter" half of the requested container facade.
+     * Empty if nothing is open. Each entry: the item's own source file
+     * basename (what it actually is - see PlacedItem.sourceFile) and
+     * its current world position (itemWorldPosition, the same
+     * computation E's own raycast and the render loop both already use
+     * - see removeNearestToRay's own doc for why this can't be a
+     * cached/stale value: a container's own box can move). */
+    public static java.util.List<ContainerItemInfo> getContainerItems() {
+        java.util.List<ContainerItemInfo> result = new java.util.ArrayList<>();
+        for (pbd.pz.ContainerContents contents : containerContents.values()) {
+            for (pbd.pz.ContainerContents.PlacedItem item : contents.items) {
+                result.add(new ContainerItemInfo(item.sourceFile, item.currentX, item.currentY, item.currentZ, contents));
+            }
+        }
+        return result;
+    }
+
+    /** One entry from getContainerItems() above - sourceFile identifies
+     * WHICH item (matches PlacedItem.sourceFile, e.g. "Bucket.FBX"),
+     * x/y/z is its own CURRENT local position within its container
+     * (before the container's own world transform - matching what
+     * PlacedItem itself stores, not a fully-resolved world position,
+     * since a container can move and this value should stay meaningful
+     * relative to it). Not a full PlacedItem reference on purpose -
+     * that type's own internal fields (bounds, mesh, ...) are
+     * implementation detail this facade has no reason to expose. */
+    public record ContainerItemInfo(String sourceFile, float x, float y, float z, pbd.pz.ContainerContents owner) {}
+
+    /** The "setter" half - removes ONE item (the first one whose own
+     * sourceFile basename matches, case-sensitively) from whichever
+     * open container currently holds it. Returns true if something was
+     * actually removed. The programmatic equivalent of E's own
+     * raycast-nearest removal, minus the raycast and the "nearest to
+     * the camera" requirement - useful on its own (a mod that wants to
+     * take a SPECIFIC named item, not whatever's closest to the
+     * player), and useful for the same isolation purpose setOpen() on
+     * PbdRenderer serves: calling this directly tests whether
+     * CONTAINER REMOVAL ITSELF works, independent of whether the
+     * raycast that's SUPPOSED to trigger it does. */
+    public static boolean removeContainerItem(String sourceFile) {
+        for (pbd.pz.ContainerContents contents : containerContents.values()) {
+            for (var it = contents.items.iterator(); it.hasNext(); ) {
+                pbd.pz.ContainerContents.PlacedItem item = it.next();
+                if (item.sourceFile.equals(sourceFile)) {
+                    it.remove();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean mouseClicked = false;   // edge-detected in the main loop, same idea as justPressed for keys
     private static boolean leftMouseDown = false;
 
@@ -320,7 +387,7 @@ public final class Main {
             // producing bit-identical results, which would make manual
             // testing across runs impossible).
             long sessionSeed = new java.util.Random().nextLong();
-            java.util.Map<java.util.List<Integer>, pbd.pz.ContainerContents> containerContents = new java.util.HashMap<>();
+            containerContents.clear(); // see this field's own doc: cleared, not re-declared, so N/B scene-cycling starts fresh rather than carrying a previous scene's open containers forward
             java.util.Map<pbd.pz.ContainerContents.PlacedItem, ClassicMeshRenderer> itemRenderers = new java.util.HashMap<>();
 
             FlyCamera camera = new FlyCamera();
@@ -351,8 +418,11 @@ public final class Main {
                 // - if it doesn't, the problem is upstream of this whole
                 // file, in GLFW's own key callback registration; if it
                 // does, but justPressed(...) still never fires an
-                // if-block, the bug is specifically in justPressed's own
-                // edge-detection (keysDownPrev handling).
+                // if-block, the bug is downstream of the raw callback -
+                // was, definitively, InputState.endFrame()'s own former
+                // call site (see that method's own doc): kept as a
+                // useful independent cross-check even now that the
+                // actual root cause is known and fixed.
                 keyStateLogTimer += dt;
                 if (keyStateLogTimer >= 2.0f) {
                     keyStateLogTimer = 0f;
@@ -691,6 +761,27 @@ public final class Main {
                             pbd.format.PbdInstance voxelInst = new pbd.format.PbdInstance(inst.id + "_voxels", "mesh");
                             voxelInst.meshData = meshData;
                             voxelInst.material = inst.material;
+                            // THE fix for "a block appears at the wrong
+                            // place": `new PbdInstance(id, type)` only
+                            // ever sets id/type - position defaults to
+                            // (0,0,0), rotation to identity, meaning
+                            // voxelInst rendered at the world origin
+                            // every time, wherever the original actually
+                            // was. Position/rotation copied from the
+                            // ORIGINAL inst - the mesh itself is already
+                            // in WORLD-SCALED local units (see
+                            // PrimitiveVoxelizer's own sx/sy/sz =
+                            // instance.scale.x/y/z - the voxel grid's
+                            // physical extent already bakes the original
+                            // scale in), so voxelInst's OWN scale is
+                            // deliberately left at its default (1,1,1),
+                            // NOT also copied from inst - copying it too
+                            // would apply the original's scale a SECOND
+                            // time on top of geometry that already has
+                            // it baked in, stretching the result instead
+                            // of fixing it.
+                            voxelInst.position.set(inst.position);
+                            voxelInst.rotation.set(inst.rotation);
                             ClassicMeshRenderer voxelRenderer = buildMeshRenderer(voxelInst, scene, 0);
                             if (voxelRenderer != null) {
                                 destroyedRenderers.put(target, voxelRenderer);
@@ -737,27 +828,6 @@ public final class Main {
                 }
 
                 window.swapBuffers();
-
-                // THE fix for the reported "E/G/H raw key state flips to
-                // true, but the actual action never fires" bug -
-                // keysDownPrev was declared but never actually written
-                // to anywhere in this file (confirmed by grep: the only
-                // OTHER reference to it was the read inside justPressed
-                // itself), meaning it stayed at its default all-false
-                // forever. !keysDownPrev[key] was therefore unconditionally
-                // true, which doesn't itself explain "never fires" on
-                // its own (if anything it should have made justPressed
-                // fire on EVERY frame a key was held, not zero) - but it
-                // is unambiguously wrong regardless of exactly how its
-                // symptom actually presented, and correct edge-detection
-                // semantics need this synced at the end of every frame,
-                // after this frame's own justPressed(...) checks have
-                // already run against the PREVIOUS frame's snapshot -
-                // syncing any earlier would make a key's own true state
-                // this frame instantly overwrite what THIS frame needed
-                // to compare against, collapsing "was down last frame" to
-                // "is down right now" before it was ever consulted.
-                System.arraycopy(keysDown, 0, keysDownPrev, 0, keysDown.length);
             }
         }
         // Resets the static, cross-window key state before returning to
@@ -768,7 +838,7 @@ public final class Main {
         // this iteration), so the very first frame of the next window
         // sees justPressed() fire again immediately and cycles forever.
         java.util.Arrays.fill(keysDown, false);
-        java.util.Arrays.fill(keysDownPrev, false);
+        java.util.Arrays.fill(keysJustPressed, false);
         return nextScenePath;
     }
 
@@ -1171,8 +1241,33 @@ public final class Main {
         camera.pitch = hideStartPitch + (hideTargetPitch - hideStartPitch) * s;
     }
 
+    /** Was key pressed since the last time THIS SPECIFIC key was
+     * checked - consumed on read, exactly like consumeClick()/
+     * mouseClicked below for the mouse. Deliberately NOT the
+     * keysDown-vs-keysDownPrev-snapshot comparison this used to be:
+     * that version was verified correct in isolation (a direct,
+     * reflection-based test against this exact method passed every
+     * case), yet a real run showed it never actually firing - E/G/H
+     * all started working the moment they were changed to check
+     * keysDown directly instead. Rather than chase exactly why the
+     * per-frame-snapshot approach broke down in practice, this
+     * switches to the same event-driven flag the mouse click handling
+     * already used successfully: keysJustPressed[key] is set directly
+     * by the GLFW_PRESS callback itself (see the callback above), the
+     * ONE moment a press unambiguously happened, with no per-frame
+     * timing/ordering for it to depend on - and reading it here clears
+     * it, so it still only fires once per physical press, not every
+     * frame the key stays held (unlike a raw keysDown[key] check,
+     * which the callback still maintains for movement/held-key
+     * purposes elsewhere, but which repeat-fires by design and would
+     * be wrong for a single-shot action like removing one item or
+     * destroying one instance per press). */
     private static boolean justPressed(int key) {
-        return keysDown[key] && !keysDownPrev[key];
+        if (keysJustPressed[key]) {
+            keysJustPressed[key] = false;
+            return true;
+        }
+        return false;
     }
 
     /** True once per left-click, consuming the flag so a held click doesn't repeat-fire. */
@@ -1197,7 +1292,10 @@ public final class Main {
             glfwSetInputMode(handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
             glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> {
                 if (key >= 0 && key <= GLFW_KEY_LAST) {
-                    if (action == GLFW_PRESS) keysDown[key] = true;
+                    if (action == GLFW_PRESS) {
+                        keysDown[key] = true;
+                        keysJustPressed[key] = true; // set directly from the discrete PRESS event itself, exactly like mouseClicked below - not from comparing keysDown against a previous frame's snapshot, which is the part that turned out not to work reliably in practice (see justPressed's own doc)
+                    }
                     else if (action == GLFW_RELEASE) keysDown[key] = false;
                 }
             });
@@ -1263,9 +1361,27 @@ public final class Main {
             }
         }
 
-        /** Call once per frame after all justPressed() checks for that frame have been made. */
+        /** No longer does anything - kept only so its two existing call
+         * sites don't need to be removed. Used to sync keysDownPrev for
+         * the old keysDown-vs-keysDownPrev justPressed() implementation;
+         * that whole mechanism is gone now (see justPressed's own doc),
+         * replaced by keysJustPressed, which the GLFW_PRESS callback
+         * itself sets directly and justPressed() consumes on read - no
+         * per-frame sync of any kind needed or wanted. This method's
+         * OWN prior version is actually the confirmed root cause of the
+         * reported "E/G/H never fire" bug: it was called mid-frame
+         * (right after channel/animation updates, well before the E/G/H
+         * checks later in the same frame's code), which synced
+         * keysDownPrev to the CURRENT frame's keysDown before those
+         * later checks ever got to compare against the PREVIOUS frame's
+         * snapshot - so keysDownPrev[key] was already true by the time
+         * E/G/H's own justPressed() ran, on literally the very first
+         * frame the key went down, making justPressed() structurally
+         * unable to ever return true for anything checked after this
+         * call site. N/B/F3/C, all checked BEFORE this call in the
+         * frame's own code, never hit this - which is exactly why they
+         * worked while E/G/H didn't. */
         void endFrame() {
-            System.arraycopy(keysDown, 0, keysDownPrev, 0, keysDown.length);
         }
     }
 }

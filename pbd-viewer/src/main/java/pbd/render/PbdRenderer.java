@@ -768,6 +768,45 @@ public final class PbdRenderer implements AutoCloseable {
         return closestIndex;
     }
 
+    /** Sets (not toggles) instance instanceId's own open/closed state
+     * directly by name - the programmatic equivalent of clicking it via
+     * toggleKeyframedInstanceAlongRay just above, minus the raycast:
+     * same linkGroup handling (every instance sharing this one's own
+     * linkGroup moves together), same sound-on-transition behavior.
+     * Exists specifically so a caller (a facade, a test script, a mod)
+     * can open/close a door WITHOUT needing a working camera raycast at
+     * all - useful on its own, and specifically useful for isolating
+     * whether a reported "nothing happens" bug is in the INPUT/raycast
+     * layer or in whatever's supposed to happen once something IS
+     * triggered: calling this directly skips the input layer entirely.
+     * Returns false (does nothing else) if instanceId doesn't exist or
+     * isn't keyframed at all (Double.isNaN(instanceAnimTime[idx])) -
+     * setting "open" on something with no animation to play wouldn't
+     * mean anything.
+     */
+    public boolean setOpen(String instanceId, boolean open) {
+        int idx = -1;
+        for (int i = 0; i < scene.instances.size(); i++) {
+            if (scene.instances.get(i).id.equals(instanceId)) { idx = i; break; }
+        }
+        if (idx < 0 || Double.isNaN(instanceAnimTime[idx])) return false;
+
+        String group = scene.instances.get(idx).params.get("linkGroup");
+        if (group == null) {
+            instanceOpen[idx] = open;
+            playSoundAtCurrentTime(idx);
+        } else {
+            for (int i = 0; i < scene.instances.size(); i++) {
+                if (Double.isNaN(instanceAnimTime[i])) continue;
+                if (group.equals(scene.instances.get(i).params.get("linkGroup"))) {
+                    instanceOpen[i] = open;
+                    playSoundAtCurrentTime(i);
+                }
+            }
+        }
+        return true;
+    }
+
     /** Plays instance i's sound field for whichever keyframe it's
      * CURRENTLY sitting at, right at the moment a click toggles it into
      * motion - the fix for a sound on the first or last keyframe never

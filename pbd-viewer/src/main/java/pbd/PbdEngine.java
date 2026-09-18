@@ -255,6 +255,76 @@ public final class PbdEngine {
 
         public boolean isLight(String instanceName) { return "light".equals(type(instanceName)); }
 
+        /** World-space bounding box size (width, height, depth) - for
+         * every canonical procedural shape (cube/sphere/cylinder/cone/
+         * torus/disc/plane), this IS exactly scale.x/y/z, since every
+         * one of them is DEFINED to fit within a canonical
+         * [-0.5,0.5]^3 local-space box (see PBD_FORMAT_SPEC.md's own
+         * "Canonical cube"/"Canonical sphere"/etc. entries) - scale
+         * alone fully determines the world-space extent. A "mesh" type
+         * instance is the one case that ISN'T true for: its own
+         * geometry is "deliberately whatever it is" (see
+         * PbdMeshData's own doc), so this computes its ACTUAL local-
+         * space bounding box from its own vertex data first, then
+         * applies scale on top - the two would only coincide by
+         * coincidence for a hand-modeled mesh. Returns {0,0,0} for a
+         * mesh instance with no meshData at all (nothing to measure). */
+        public float[] dimensions(String instanceName) {
+            PbdInstance inst = find(instanceName);
+            if ("mesh".equals(inst.type)) {
+                if (inst.meshData == null || inst.meshData.positions.length == 0) return new float[]{0f, 0f, 0f};
+                float[] pos = inst.meshData.positions;
+                float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
+                float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+                for (int i = 0; i < pos.length; i += 3) {
+                    minX = Math.min(minX, pos[i]); maxX = Math.max(maxX, pos[i]);
+                    minY = Math.min(minY, pos[i + 1]); maxY = Math.max(maxY, pos[i + 1]);
+                    minZ = Math.min(minZ, pos[i + 2]); maxZ = Math.max(maxZ, pos[i + 2]);
+                }
+                return new float[]{(maxX - minX) * inst.scale.x, (maxY - minY) * inst.scale.y, (maxZ - minZ) * inst.scale.z};
+            }
+            return new float[]{inst.scale.x, inst.scale.y, inst.scale.z};
+        }
+
+        /** World-space volume, in cubic world units - the EXACT
+         * geometric volume for every canonical shape (not an estimate:
+         * sphere = (4/3)pi r^3 at its own real radius 0.5, cylinder =
+         * pi r^2 h at its own real radius/height, torus =
+         * 2*pi^2*R*r^2 at its own real major/minor radius 0.35/0.15 -
+         * the same canonical proportions PrimitiveVoxelizer's own
+         * classifyX methods test against), scaled by
+         * scale.x*scale.y*scale.z. disc/plane are true 2D shapes - 0
+         * volume exactly, NOT the small-but-nonzero extruded volume
+         * PrimitiveVoxelizer gives them for voxelization purposes (see
+         * that class's own MIN_THICKNESS_FRACTION doc) - a genuinely
+         * different question ("how much space does this occupy" vs
+         * "how thick does this need to be voxelized as"). A "mesh"
+         * type's volume is APPROXIMATED as its own axis-aligned
+         * bounding box volume (dimensions()'s own x*y*z) - computing
+         * an arbitrary mesh's true enclosed volume needs actual mesh
+         * integration (the divergence theorem over its triangles),
+         * which this facade doesn't attempt; an approximation, not
+         * represented as exact the way every canonical shape's own
+         * value is. An unrecognized/unsupported type returns 0f. */
+        public float volume(String instanceName) {
+            PbdInstance inst = find(instanceName);
+            if ("mesh".equals(inst.type)) {
+                float[] dims = dimensions(instanceName);
+                return dims[0] * dims[1] * dims[2];
+            }
+            float sx = inst.scale.x, sy = inst.scale.y, sz = inst.scale.z;
+            float canonicalVolume = switch (inst.type) {
+                case "cube" -> 1f;
+                case "sphere" -> (float) (4.0 / 3.0 * Math.PI * Math.pow(0.5, 3));
+                case "cylinder" -> (float) (Math.PI * 0.5 * 0.5 * 1.0);
+                case "cone" -> (float) (Math.PI * 0.5 * 0.5 * 1.0 / 3.0);
+                case "torus" -> (float) (2 * Math.PI * Math.PI * 0.35 * 0.15 * 0.15);
+                case "disc", "plane" -> 0f;
+                default -> 0f;
+            };
+            return canonicalVolume * sx * sy * sz;
+        }
+
         public boolean isLightEnabled(String instanceName) { return find(instanceName).lightEnabled; }
         public void setLightEnabled(String instanceName, boolean enabled) { find(instanceName).lightEnabled = enabled; }
         /** Flips lightEnabled and returns the NEW state, so a caller
