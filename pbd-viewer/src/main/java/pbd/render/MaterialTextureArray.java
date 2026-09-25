@@ -32,16 +32,48 @@ public final class MaterialTextureArray implements AutoCloseable {
 
     public final int glId; // 0 if nothing was loaded
     private final Map<String, Integer> layerByPath = new LinkedHashMap<>();
+    // Same successfully-decoded RGBA bytes already uploaded to glId above,
+    // kept here too - see this class's own build() for why: a SEPARATE
+    // consumer (voxel-destruction color sampling) used to call
+    // STBImage.stbi_load a SECOND time on these exact same files, right
+    // after this method's own call already decoded (and freed) them -
+    // confirmed, via a real crash's own log, to land right after THIS
+    // class's own resize log line for a large (3000x2000) JPEG, strongly
+    // suggesting the double-decode itself (two native
+    // allocate/decode/free cycles on the same large image in quick
+    // succession), not any question of WHEN/WHERE stbi_load ran, was
+    // the actual native heap corruption. Copied into a plain Java byte[]
+    // here, from the SAME already-successful decode this method needed
+    // anyway for its own GL upload, before that decode's own native
+    // buffer gets freed a few lines down - the only copy of this data
+    // that will ever exist from this point on, no second stbi_load
+    // anywhere for these paths, ever.
+    private final Map<String, PixelData> pixelDataByPath = new LinkedHashMap<>();
 
-    private MaterialTextureArray(int glId, Map<String, Integer> layerByPath) {
+    /** RGBA8 pixel bytes for one already-loaded texture, plus its real
+     * (pre-array-resize) width/height - see pixelDataByPath's own doc
+     * above for where this comes from and why it exists. */
+    public record PixelData(byte[] rgba, int width, int height) {}
+
+    private MaterialTextureArray(int glId, Map<String, Integer> layerByPath, Map<String, PixelData> pixelDataByPath) {
         this.glId = glId;
         this.layerByPath.putAll(layerByPath);
+        this.pixelDataByPath.putAll(pixelDataByPath);
     }
 
     /** -1 if this exact path was never successfully loaded into the array (missing file, or didn't match the array's fixed size). */
     public int layerOf(Path resolvedPath) {
         Integer layer = layerByPath.get(resolvedPath.toString());
         return layer != null ? layer : -1;
+    }
+
+    /** null if this exact path was never successfully decoded (missing
+     * file - a mismatched-size texture still decodes fine and still
+     * gets an entry here, unlike layerOf above, since pixel data for
+     * voxel-coloring purposes doesn't care about this array's own
+     * fixed-size constraint the way the GPU layer upload does). */
+    public PixelData pixelDataOf(Path resolvedPath) {
+        return pixelDataByPath.get(resolvedPath.toString());
     }
 
     public boolean isEmpty() {
@@ -65,10 +97,11 @@ public final class MaterialTextureArray implements AutoCloseable {
             }
         }
         if (toLoad.isEmpty()) {
-            return new MaterialTextureArray(0, java.util.Map.of());
+            return new MaterialTextureArray(0, java.util.Map.of(), java.util.Map.of());
         }
 
         Map<String, Integer> layerByPath = new LinkedHashMap<>();
+        Map<String, PixelData> pixelDataByPath = new LinkedHashMap<>();
         int width = 0, height = 0;
         int glId = 0;
         int nextLayer = 0;
@@ -85,6 +118,17 @@ public final class MaterialTextureArray implements AutoCloseable {
                     continue;
                 }
                 boolean pixelsFromMemoryUtil = false; // which allocator owns `pixels` right now - determines how it gets freed below
+
+                // This decode's own real (pre-array-resize) dimensions -
+                // captured now, before `pixels` potentially gets replaced
+                // by a resized copy below, since pixelDataByPath keeps
+                // the ORIGINAL resolution (voxel color sampling has no
+                // reason to share this array's own fixed-size
+                // constraint).
+                int origW = w.get(0), origH = h.get(0);
+                byte[] origBytes = new byte[origW * origH * 4];
+                pixels.get(0, origBytes); // absolute get - does not move pixels' own position, which the rest of this method below still depends on
+                pixelDataByPath.put(path.toString(), new PixelData(origBytes, origW, origH));
 
                 if (glId == 0) {
                     width = w.get(0);
@@ -143,7 +187,7 @@ public final class MaterialTextureArray implements AutoCloseable {
             }
         }
 
-        return new MaterialTextureArray(glId, layerByPath);
+        return new MaterialTextureArray(glId, layerByPath, pixelDataByPath);
     }
 
     /**

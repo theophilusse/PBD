@@ -21,15 +21,27 @@ public final class ObjMesh {
     // would be guessing at a caller's intent from a number that could
     // coincidentally divide evenly by 8 for a 6-float mesh too.
     public final boolean hasUv;
+    // Per-voxel color for a voxel-destruction mesh (see
+    // VoxelMeshBuilder's own doc on why a shared UV-tiled texture
+    // isn't used for these) - 3 floats/vertex, parallel to vertexData
+    // rather than interleaved into it (keeping the existing 6/8-float
+    // stride logic below untouched for every OTHER caller, which never
+    // sets this). Null for every mesh that isn't a voxel result.
+    public final float[] colors;
 
     public ObjMesh(float[] vertexData, int[] indices) {
         this(vertexData, indices, false);
     }
 
     public ObjMesh(float[] vertexData, int[] indices, boolean hasUv) {
+        this(vertexData, indices, hasUv, null);
+    }
+
+    public ObjMesh(float[] vertexData, int[] indices, boolean hasUv, float[] colors) {
         this.vertexData = vertexData;
         this.indices = indices;
         this.hasUv = hasUv;
+        this.colors = colors;
     }
 
     private int stride() {

@@ -41,14 +41,45 @@ public final class ClassicMeshRenderer implements AutoCloseable {
     private static final int LOC_BASE_COLOR = 3;
     private static final int LOC_WORLD_MATRIX = 4;
     private static final int LOC_USE_TEXTURE = 5;
-    private static final int LOC_UV_SCALE = 6;
+    private static final int LOC_USE_VERTEX_COLOR = 7;    private static final int LOC_UV_SCALE = 6;
+
+    /** Shared across EVERY ClassicMeshRenderer instance that resolves to
+     * the same shaderDir, keyed by that path - the actual fix for a
+     * real, reported native crash: the constructor below used to
+     * compile+link a BRAND NEW GLSL program from source on every single
+     * call (java.new ShaderProgram(...)), meaning every voxel
+     * destruction AND every follow-up hit on the same debris recompiled
+     * classic.vert/classic.frag from scratch, on the GPU driver, in
+     * rapid succession during actual gameplay - repeated shader
+     * compilation under time pressure is a well-known source of driver-
+     * level instability on some GPU/driver combinations, which lines up
+     * with a crash specifically correlating with a SECOND (or later)
+     * destruction in the same session, not the first. Every mesh this
+     * project ever builds (a regular textured primitive, a container
+     * item, a voxel-destruction result) uses the SAME classic.vert/
+     * classic.frag pair, so sharing one compiled program across all of
+     * them is not just safer but the standard, correct way to use a
+     * shader in the first place - a program is meant to be reused
+     * across many draw calls with many different meshes/uniforms, never
+     * rebuilt per-object. */
+    private static final java.util.Map<Path, ShaderProgram> SHARED_PROGRAMS = new java.util.HashMap<>();
+
+    private static ShaderProgram sharedProgram(Path shaderDir) throws IOException {
+        ShaderProgram existing = SHARED_PROGRAMS.get(shaderDir);
+        if (existing != null) return existing;
+        ShaderProgram created = new ShaderProgram(shaderDir.resolve("classic.vert"), shaderDir.resolve("classic.frag"));
+        SHARED_PROGRAMS.put(shaderDir, created);
+        return created;
+    }
 
     private final ShaderProgram program;
     private final int vao;
     private final int vbo;
     private final int ibo;
+    private int colorVbo = -1; // -1 = no per-vertex color (most meshes) - only set when the mesh this renderer was built from actually has one
     private final int indexCount;
     private final boolean meshHasUv;
+    private final boolean meshHasColor;
     private int textureGlId = -1; // -1 = no texture bound, render flat baseColor as before
 
     public final long uploadedBytes;
@@ -57,8 +88,9 @@ public final class ClassicMeshRenderer implements AutoCloseable {
     public float[] uvScale = {1f, 1f};
 
     public ClassicMeshRenderer(Path shaderDir, ObjMesh mesh) throws IOException {
-        program = new ShaderProgram(shaderDir.resolve("classic.vert"), shaderDir.resolve("classic.frag"));
+        program = sharedProgram(shaderDir);
         meshHasUv = mesh.hasUv;
+        meshHasColor = mesh.colors != null;
         int stride = meshHasUv ? 8 : 6;
 
         vao = glGenVertexArrays();
@@ -85,6 +117,18 @@ public final class ClassicMeshRenderer implements AutoCloseable {
         ibo = glGenBuffers();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indices, GL_STATIC_DRAW);
+
+        if (meshHasColor) {
+            // A SEPARATE buffer, not interleaved into the main vbo above
+            // (which stays at its existing 6/8-float stride for every
+            // OTHER mesh) - simplest way to add this without touching
+            // every other caller's own vertex layout.
+            colorVbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, colorVbo);
+            glBufferData(GL_ARRAY_BUFFER, mesh.colors, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 3, GL_FLOAT, false, 3 * Float.BYTES, 0L);
+        }
 
         indexCount = mesh.indices.length;
         uploadedBytes = mesh.byteSize();
@@ -161,6 +205,7 @@ public final class ClassicMeshRenderer implements AutoCloseable {
         } else {
             glUniform1i(LOC_USE_TEXTURE, 0);
         }
+        glUniform1i(LOC_USE_VERTEX_COLOR, meshHasColor ? 1 : 0);
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             glUniformMatrix4fv(LOC_VIEW_PROJ, false, camera.viewProj(aspectRatio).get(stack.mallocFloat(16)));
@@ -175,7 +220,15 @@ public final class ClassicMeshRenderer implements AutoCloseable {
         if (textureGlId != -1) glDeleteTextures(textureGlId);
         glDeleteBuffers(vbo);
         glDeleteBuffers(ibo);
+        if (colorVbo != -1) glDeleteBuffers(colorVbo);
         glDeleteVertexArrays(vao);
-        program.close();
+        // program is SHARED (see sharedProgram's own doc above) -
+        // deliberately NOT closed here anymore: this renderer's own
+        // mesh-specific GPU resources (vao/vbo/ibo/colorVbo/texture)
+        // are this instance's own to free, but the compiled shader
+        // program itself may still be in active use by every OTHER
+        // ClassicMeshRenderer alive right now (which is the whole
+        // point of sharing it) - closing it here would pull the
+        // program out from under them the next time any of them drew.
     }
 }

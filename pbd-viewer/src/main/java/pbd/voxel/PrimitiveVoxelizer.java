@@ -54,17 +54,42 @@ public final class PrimitiveVoxelizer {
         }
     }
 
+    /** Maximum octree depth regardless of how fine targetVoxelWorldSize
+     * asks for - a safety cap, not a normal-case limit: depth 10 alone
+     * already allows 1024 voxels along the octree's OWN addressable
+     * grid axis (the actual per-shape-axis voxel counts, gridX/gridY/
+     * gridZ below, are usually smaller still, sized to the primitive's
+     * OWN scale, not this shared power-of-2 grid). Reachable only by a
+     * pathological case - a huge instance combined with a tiny
+     * targetVoxelWorldSize - and exists so that combination degrades to
+     * "coarser than asked for" instead of an unbounded recursion depth
+     * (and the collectFilledUnitVoxels() list size that would come with
+     * it) from a single instance a player could just walk up to and
+     * press G on. */
+    private static final int MAX_OCTREE_DEPTH = 10;
+
     /** Returns null for an indestructible instance (never voxelized, by
      * design - see the roadmap this implements) or a mesh-type one (not
-     * supported yet). targetVoxelsPerLongestAxis controls resolution:
-     * the octree's grid is sized so the primitive's LARGEST world-space
-     * scale axis gets roughly this many voxels across it, with shorter
-     * axes getting proportionally fewer - a flat, wide primitive
-     * doesn't need (and doesn't get) as many voxels along its thin axis
-     * as its wide ones. */
-    public static Result voxelize(PbdInstance instance, int targetVoxelsPerLongestAxis) {
+     * supported yet). targetVoxelWorldSize is an ABSOLUTE size, in this
+     * scene's own world units, NOT a voxel count - see this project's
+     * own real-world scale reference (1cm is roughly a Blender scale of
+     * 0.005), passed here directly rather than as a per-axis COUNT, so
+     * a small prop and a large wall both get comparably fine surface
+     * detail instead of the wall's own longest axis alone deciding a
+     * single shared voxel count for both. Combined with
+     * rasterizeAdaptive's own early return on a definitively-inside
+     * region (insertFilledBox, no further recursion - see that
+     * method's own doc) this is what actually produces "high-
+     * definition surface, low-definition interior": asking for a much
+     * finer voxelWorldSize doesn't multiply the LEAF count by the same
+     * factor everywhere, only near the boundary, where classify()
+     * keeps returning the ambiguous 0 that forces the recursion deeper
+     * - a fully-interior region collapses into one leaf at whatever
+     * depth it first tests as entirely inside, however fine the
+     * requested surface resolution is. */
+    public static Result voxelize(PbdInstance instance, float targetVoxelWorldSize) {
         if (instance.indestructible) return null;
-        if ("mesh".equals(instance.type)) return voxelizeMesh(instance, targetVoxelsPerLongestAxis);
+        if ("mesh".equals(instance.type)) return voxelizeMesh(instance, targetVoxelWorldSize);
 
         float sx = instance.scale.x, sy = instance.scale.y, sz = instance.scale.z;
         boolean zeroVolume = "plane".equals(instance.type) || "disc".equals(instance.type);
@@ -82,14 +107,14 @@ public final class PrimitiveVoxelizer {
 
         float longestAxis = Math.max(effectiveSy, Math.max(sx, sz));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-scale) instance - nothing to voxelize
-        float voxelWorldSize = longestAxis / targetVoxelsPerLongestAxis;
+        float voxelWorldSize = targetVoxelWorldSize;
 
         int gridX = Math.max(1, Math.round(sx / voxelWorldSize));
         int gridY = Math.max(1, Math.round(effectiveSy / voxelWorldSize));
         int gridZ = Math.max(1, Math.round(sz / voxelWorldSize));
         int gridMax = Math.max(gridX, Math.max(gridY, gridZ));
         int depth = 1;
-        while ((1 << depth) < gridMax) depth++;
+        while ((1 << depth) < gridMax && depth < MAX_OCTREE_DEPTH) depth++;
         VoxelOctree octree = new VoxelOctree(depth);
         int gridSize = octree.gridSize();
 
@@ -100,7 +125,15 @@ public final class PrimitiveVoxelizer {
         // primitive sits in the middle of the addressable grid rather
         // than jammed into one corner. gridOriginLocal is this offset's
         // LOCAL-space equivalent, in case a caller wants to place voxel
-        // (0,0,0) back into the scene correctly.
+        // (0,0,0) back into the scene correctly. offX/offY/offZ are
+        // expressed in gridSize's OWN shared units (one octree unit,
+        // uniformly, equals one real voxelWorldSize on ANY axis - see
+        // this project's own history for why: it's what actually makes
+        // the "high-definition surface, low-definition interior"
+        // resolution scheme work at all) - so converting one of them to
+        // real-world local-space units is a flat multiply by
+        // voxelWorldSize, the SAME conversion factor regardless of
+        // which axis or how thin the object is on it.
         int offX = (gridSize - gridX) / 2, offY = (gridSize - gridY) / 2, offZ = (gridSize - gridZ) / 2;
 
         switch (instance.type) {
@@ -116,10 +149,26 @@ public final class PrimitiveVoxelizer {
             }
         }
 
+        // THE fix for a real, confirmed bug: this used to read
+        // "-offX/(float)gridX*sx - sx/2f" - dividing offX (a gridSize-
+        // scale quantity) by gridX (this axis's own, often much
+        // smaller, real voxel count) and THEN scaling by sx - a unit
+        // mismatch that only produced roughly-right numbers for a
+        // roughly-cubic object (where gridX happens to be close to
+        // gridSize, so dividing by either gives a similar answer) and
+        // silently fell apart for anything with a strongly non-cubic
+        // aspect ratio - confirmed by direct reproduction against a
+        // real reported case (a door panel only 3 voxels thick on one
+        // axis): the buggy formula placed that axis's own origin
+        // offset by roughly 8% of the object's own total size on that
+        // axis, which was enough to shift crater/voxel placement
+        // clean off the object's own actual occupied range entirely
+        // (a reported "no crater appears at all" turned out to be a
+        // crater correctly computed, just centered outside the object).
         org.joml.Vector3f gridOriginLocal = new org.joml.Vector3f(
-            -offX / (float) gridX * sx - sx / 2f,
-            -offY / (float) gridY * effectiveSy - effectiveSy / 2f,
-            -offZ / (float) gridZ * sz - sz / 2f);
+            -offX * voxelWorldSize - sx / 2f,
+            -offY * voxelWorldSize - effectiveSy / 2f,
+            -offZ * voxelWorldSize - sz / 2f);
         return new Result(octree, voxelWorldSize, gridOriginLocal);
     }
 
@@ -160,7 +209,7 @@ public final class PrimitiveVoxelizer {
     private static void rasterizeAdaptive(VoxelOctree octree, RegionClassifier classifier,
                                            int offX, int offY, int offZ, int gx, int gy, int gz,
                                            int gox, int goy, int goz, int size) {
-        rasterizeAdaptive(octree, classifier, offX, offY, offZ, gx, gy, gz, gox, goy, goz, size,
+        rasterizeAdaptive(octree, classifier, offX, offY, offZ, gx, gy, gz, gox, goy, goz, size, size, size,
             -0.5f, -0.5f, -0.5f, 1f, 1f, 1f);
     }
 
@@ -175,49 +224,85 @@ public final class PrimitiveVoxelizer {
      * canonical definition is (see PBD_FORMAT_SPEC.md - "Canonical
      * cube ([-0.5, 0.5]^3)" and so on for every OTHER type), so
      * classifyMeshRegion needs to be tested against the mesh's own
-     * actual bounding box instead. */
+     * actual bounding box instead.
+     *
+     * sizeX/sizeY/sizeZ: TRUE independent per-axis extent, not one
+     * shared `size` the way an earlier version of this method had -
+     * that version's own attempted fix for a real thin-object problem
+     * (a door panel forcing needless fine subdivision on its OTHER,
+     * much larger axes purely because they were coupled to the thin
+     * axis's own shared size) used a "stop once size <= this shape's
+     * smallest axis" heuristic instead of true per-axis splitting -
+     * which, for anything WITHOUT one dramatically thin axis (a
+     * cylinder, sphere, cone, torus - every ROUND shape this project
+     * has, where minAxisVoxels sits close to gridMax), stopped
+     * subdivision after essentially ONE level, confirmed directly: a
+     * (0.5,0.5,0.5) cylinder produced ONE single 128^3 filled region -
+     * its entire bounding cube, curvature never actually resolved at
+     * all - and a cone/sphere/torus at the same scale produced ZERO
+     * voxels, disappearing outright. insertFilledBox (VoxelOctree's
+     * own) already accepts independent min/max per axis - always did -
+     * so true anisotropic splitting needed no change to the octree
+     * itself, only to how this method recurses: each axis now halves
+     * and keeps recursing independently, stopping (staying fixed) once
+     * ITS OWN sizeAxis reaches 1, not once EVERY axis collectively
+     * reaches some shared threshold - a genuinely thin axis still
+     * settles fast (little for it to resolve either way), the other
+     * two keep refining as long as they still need to, and a region
+     * entirely outside the shape's own footprint on any axis still
+     * prunes immediately via the existing result<0 check below,
+     * regardless of size - that pruning was never the bottleneck; the
+     * shared-size coupling was. */
     private static void rasterizeAdaptive(VoxelOctree octree, RegionClassifier classifier,
                                            int offX, int offY, int offZ, int gx, int gy, int gz,
-                                           int gox, int goy, int goz, int size,
+                                           int gox, int goy, int goz, int sizeX, int sizeY, int sizeZ,
                                            float localOriginX, float localOriginY, float localOriginZ,
                                            float localExtentX, float localExtentY, float localExtentZ) {
         float minX = (gox - offX) / (float) gx * localExtentX + localOriginX;
-        float maxX = (gox + size - offX) / (float) gx * localExtentX + localOriginX;
+        float maxX = (gox + sizeX - offX) / (float) gx * localExtentX + localOriginX;
         float minY = (goy - offY) / (float) gy * localExtentY + localOriginY;
-        float maxY = (goy + size - offY) / (float) gy * localExtentY + localOriginY;
+        float maxY = (goy + sizeY - offY) / (float) gy * localExtentY + localOriginY;
         float minZ = (goz - offZ) / (float) gz * localExtentZ + localOriginZ;
-        float maxZ = (goz + size - offZ) / (float) gz * localExtentZ + localOriginZ;
+        float maxZ = (goz + sizeZ - offZ) / (float) gz * localExtentZ + localOriginZ;
 
         int result = classifier.classify(minX, minY, minZ, maxX, maxY, maxZ);
         if (result > 0) {
-            octree.insertFilledBox(gox, goy, goz, gox + size, goy + size, goz + size);
+            octree.insertFilledBox(gox, goy, goz, gox + sizeX, goy + sizeY, goz + sizeZ);
             return;
         }
         if (result < 0) {
             return; // fully outside - skip this whole region, none of its voxels get visited at all
         }
-        if (size == 1) {
-            // Uncertain even at a single voxel means the boundary passes
-            // exactly through it - fall back to a definitive point test
-            // at its center, the same criterion the old per-voxel loop
-            // used (and the same reason min==max collapses classify's
-            // closest/farthest bounds down to an exact point test - see
-            // each classifyX method's own reasoning).
+        if (sizeX == 1 && sizeY == 1 && sizeZ == 1) {
+            // Ambiguous even at the single finest voxel on every axis
+            // means the boundary passes exactly through it - fall back
+            // to a definitive point test at its center, the same
+            // criterion the very first version of this method always
+            // used for its own size==1 base case.
             float cx = (gox + 0.5f - offX) / gx * localExtentX + localOriginX;
             float cy = (goy + 0.5f - offY) / gy * localExtentY + localOriginY;
             float cz = (goz + 0.5f - offZ) / gz * localExtentZ + localOriginZ;
             if (classifier.classify(cx, cy, cz, cx, cy, cz) >= 0) {
-                octree.insert(gox, goy, goz);
+                octree.insertFilledBox(gox, goy, goz, gox + 1, goy + 1, goz + 1);
             }
             return;
         }
-        int half = size / 2;
-        for (int i = 0; i < 8; i++) {
-            int cgox = gox + ((i & 1) != 0 ? half : 0);
-            int cgoy = goy + ((i & 2) != 0 ? half : 0);
-            int cgoz = goz + ((i & 4) != 0 ? half : 0);
-            rasterizeAdaptive(octree, classifier, offX, offY, offZ, gx, gy, gz, cgox, cgoy, cgoz, half,
-                localOriginX, localOriginY, localOriginZ, localExtentX, localExtentY, localExtentZ);
+        // Only split an axis that still has room to (sizeAxis > 1) -
+        // an axis already at 1 stays fixed while the others keep
+        // refining, the actual anisotropy this whole rewrite is for.
+        boolean splitX = sizeX > 1, splitY = sizeY > 1, splitZ = sizeZ > 1;
+        int halfX = splitX ? sizeX / 2 : sizeX;
+        int halfY = splitY ? sizeY / 2 : sizeY;
+        int halfZ = splitZ ? sizeZ / 2 : sizeZ;
+        int countX = splitX ? 2 : 1, countY = splitY ? 2 : 1, countZ = splitZ ? 2 : 1;
+        for (int ix = 0; ix < countX; ix++) {
+            for (int iy = 0; iy < countY; iy++) {
+                for (int iz = 0; iz < countZ; iz++) {
+                    rasterizeAdaptive(octree, classifier, offX, offY, offZ, gx, gy, gz,
+                        gox + ix * halfX, goy + iy * halfY, goz + iz * halfZ, halfX, halfY, halfZ,
+                        localOriginX, localOriginY, localOriginZ, localExtentX, localExtentY, localExtentZ);
+                }
+            }
         }
     }
 
@@ -379,7 +464,7 @@ public final class PrimitiveVoxelizer {
      * manifold mesh can produce a wrong (typically: entirely empty,
      * since a ray from outside a leaky mesh tends to see an even
      * number of crossings) result rather than crashing. */
-    private static Result voxelizeMesh(PbdInstance instance, int targetVoxelsPerLongestAxis) {
+    private static Result voxelizeMesh(PbdInstance instance, float targetVoxelWorldSize) {
         PbdMeshData mesh = instance.meshData;
         if (mesh == null || mesh.indices.length < 3) return null; // no geometry to voxelize at all
 
@@ -403,7 +488,7 @@ public final class PrimitiveVoxelizer {
         float longestAxis = Math.max(extentX, Math.max(extentY, extentZ));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-size) mesh
 
-        float voxelWorldSize = longestAxis / targetVoxelsPerLongestAxis;
+        float voxelWorldSize = targetVoxelWorldSize;
         // Local-space voxel size (before instance.scale) - the grid
         // itself is sized/walked in the mesh's own local units, same
         // as every other voxelize* method works in the primitive's own
@@ -419,7 +504,7 @@ public final class PrimitiveVoxelizer {
         int gridZ = Math.max(1, Math.round((meshMaxZ - meshMinZ) / localVoxelZ));
         int gridMax = Math.max(gridX, Math.max(gridY, gridZ));
         int depth = 1;
-        while ((1 << depth) < gridMax) depth++;
+        while ((1 << depth) < gridMax && depth < MAX_OCTREE_DEPTH) depth++;
         VoxelOctree octree = new VoxelOctree(depth);
         int gridSize = octree.gridSize();
         int offX = (gridSize - gridX) / 2, offY = (gridSize - gridY) / 2, offZ = (gridSize - gridZ) / 2;
@@ -430,7 +515,7 @@ public final class PrimitiveVoxelizer {
             classifyMeshRegion(pos, mesh.indices, fMeshMinX, fMeshMinY, fMeshMinZ, fMeshMaxX, fMeshMaxY, fMeshMaxZ,
                 minX, minY, minZ, maxX, maxY, maxZ);
 
-        rasterizeAdaptive(octree, classifier, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize,
+        rasterizeAdaptive(octree, classifier, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize, gridSize, gridSize,
             meshMinX, meshMinY, meshMinZ,
             meshMaxX - meshMinX, meshMaxY - meshMinY, meshMaxZ - meshMinZ);
 
@@ -442,10 +527,17 @@ public final class PrimitiveVoxelizer {
         // canonical-shape formula every other type uses (a mesh's own
         // local origin isn't necessarily its bounding-box center the
         // way a canonical shape's is).
+        // Same fix as the other gridOriginLocal computation above (see
+        // that one's own doc for the full story: offX/offY/offZ are in
+        // gridSize's OWN shared octree units, where one unit always
+        // equals voxelWorldSize regardless of this axis's own gridX/
+        // gridY/gridZ - dividing by gridX instead of just multiplying
+        // by voxelWorldSize was the actual bug, confirmed by direct
+        // reproduction against a real case).
         org.joml.Vector3f gridOriginLocal = new org.joml.Vector3f(
-            meshMinX - (offX / (float) gridX) * (meshMaxX - meshMinX),
-            meshMinY - (offY / (float) gridY) * (meshMaxY - meshMinY),
-            meshMinZ - (offZ / (float) gridZ) * (meshMaxZ - meshMinZ));
+            meshMinX - offX * voxelWorldSize,
+            meshMinY - offY * voxelWorldSize,
+            meshMinZ - offZ * voxelWorldSize);
         return new Result(octree, voxelWorldSize, gridOriginLocal);
     }
 

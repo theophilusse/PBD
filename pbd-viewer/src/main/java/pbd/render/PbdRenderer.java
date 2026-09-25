@@ -86,6 +86,22 @@ public final class PbdRenderer implements AutoCloseable {
     private final int cachedVao;
     private final PbdMeshCache meshCache;
     private MaterialTextureArray textureArray;
+    /** Pre-decoded pixel data for voxel-destruction color sampling -
+     * see this class's own upload() for why this exists and why it's
+     * populated there specifically, not lazily during actual
+     * destruction. Keyed by the same resolved texture path string
+     * materialOverrides' own "texture" field already holds. */
+    public record VoxelTexturePixels(byte[] pixelBytes, int width, int height) {}
+    private final Map<String, VoxelTexturePixels> voxelTexturePixels = new java.util.HashMap<>();
+
+    /** Public read-only lookup for the destruction code path - returns
+     * null if this exact texture path was never successfully decoded
+     * (missing file, unsupported format, ...), which the caller treats
+     * as "fall back to this material's own flat color" the same way it
+     * already did for a material with no texture= at all. */
+    public VoxelTexturePixels voxelTexturePixelsFor(String texturePath) {
+        return voxelTexturePixels.get(texturePath);
+    }
     private int textureArrayGlId;
     private MaterialTextureArray normalTextureArray;
     private int normalTextureArrayGlId;
@@ -274,6 +290,17 @@ public final class PbdRenderer implements AutoCloseable {
     private boolean hasAnimatedInstances;
     private double[] instanceAnimTime;   // NaN for non-keyframed instances; otherwise this instance's own local time
     private boolean[] instanceOpen;      // target state: true = animating toward the last keyframe, false = toward the first
+    // Tracks hideInstance()'s own effect SEPARATELY from worldTransforms
+    // itself - needed because updateAnimation's own HierarchyResolver
+    // rebuild (see that method's own doc) replaces the ENTIRE
+    // worldTransforms array from scratch every frame for any animated
+    // scene, with no idea a given index was ever hidden; hideInstance's
+    // own zero-scale write would otherwise be silently undone on the
+    // very next frame for anything with hasAnimatedInstances=true - the
+    // actual confirmed cause of a real reported "the original primitive
+    // never disappears" bug. null until first used (most scenes never
+    // hide anything).
+    private boolean[] hiddenInstances;
     private boolean[] instanceLoop;      // true = ping-pongs continuously, ignoring instanceOpen/clicks entirely
 
     /** True once instance i's keyframe animation has fully reached its
@@ -325,6 +352,80 @@ public final class PbdRenderer implements AutoCloseable {
         return !instanceOpen[instanceIndex] && Math.abs(instanceAnimTime[instanceIndex] - firstTime) < 0.01;
     }
 
+    /** Whether the container metaIdx belongs to should be considered
+     * "open" (the gate a caller - Main.java's own container-contents
+     * display, a modder's own AI code - uses to decide whether this
+     * container's contents should be visible at all) - true if ANY ONE
+     * of its linked doors (containerTriggers, plural - see PbdInstance)
+     * is toggled open. A storage cube can list several doors (a big
+     * wardrobe with two independent doors over one shelf), and several
+     * storage cubes can share one door too (a door with pockets on both
+     * sides) - both directions fall out naturally from "each cube lists
+     * the doors that open it". Falls back to "is ANY instance in the
+     * whole scene toggled open" only when the cube lists no doors at
+     * all. Uses isInstanceOpen (toggled-open, regardless of animation
+     * progress), NOT isInstanceFullyClosed below - contents should
+     * appear the moment a linked door is clicked open, not only once
+     * its whole swing animation has finished playing out.
+     *
+     * Promoted here from a Main.java-private helper of the same name
+     * and behavior - that version worked correctly, but lived only in
+     * the application's own game-loop code, unreachable by a modder's
+     * own script/AI logic the way every other runtime query
+     * (isInstanceOpen, getContainerItems, setOpen, ...) already is;
+     * this IS that same logic, just where the rest of the facade
+     * already lives, not a reimplementation. */
+    public boolean isContainerOpen(int metaIdx) {
+        java.util.List<String> triggers = scene.instances.get(metaIdx).containerTriggers;
+        if (!triggers.isEmpty()) {
+            return anyTriggerMatches(triggers, true);
+        }
+        for (int i = 0; i < scene.instances.size(); i++) {
+            if (isInstanceOpen(i)) return true;
+        }
+        return false;
+    }
+
+    /** True once every one of a container's linked doors is FULLY
+     * closed - not just toggled shut, but actually finished swinging
+     * back to its closed pose (isInstanceFullyClosed above).
+     * Deliberately asymmetric with isContainerOpen: showing contents
+     * the instant a door is clicked open feels responsive, but clearing
+     * them the instant it's clicked shut - before it's actually swung
+     * across the opening - would make items visibly vanish while still
+     * exposed through the gap instead of disappearing behind a closed
+     * door. This is also the accessor a zombie's own AI would check to
+     * know whether it can still see a hiding player through a door
+     * that's ajar rather than fully shut - see this project's own
+     * roadmap for the fuller getArmRotationValue version of this
+     * question once a lever-arm's own continuous 0..1 position exists;
+     * this open/closed version is what's available today. Promoted here
+     * for the same reason isContainerOpen was - a modder's own code
+     * couldn't reach the Main.java-private version this replaces. */
+    public boolean areAllDoorsClosed(int metaIdx) {
+        java.util.List<String> triggers = scene.instances.get(metaIdx).containerTriggers;
+        if (triggers.isEmpty()) return true;
+        for (String triggerName : triggers) {
+            for (int i = 0; i < scene.instances.size(); i++) {
+                if (triggerName.equals(scene.instances.get(i).id) && !isInstanceFullyClosed(i)) {
+                    return false; // this linked door is either still open or still swinging shut
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean anyTriggerMatches(java.util.List<String> triggerNames, boolean requireOpen) {
+        for (String triggerName : triggerNames) {
+            for (int i = 0; i < scene.instances.size(); i++) {
+                if (triggerName.equals(scene.instances.get(i).id) && isInstanceOpen(i) == requireOpen) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** World-space center and full (not half) extent of instance i, for
      * positioning container contents inside its metadata volume. */
     public Vector3f instanceWorldCenter(int instanceIndex) {
@@ -338,6 +439,26 @@ public final class PbdRenderer implements AutoCloseable {
 
     public Matrix4f instanceWorldMatrix(int instanceIndex) {
         return new Matrix4f(worldTransforms[instanceIndex]);
+    }
+
+    /** The CURRENT, live resolved transform for every instance -
+     * recomputed fresh from instanceAnimTime, deliberately bypassing
+     * hiddenInstances' own zeroing (worldTransforms itself would
+     * return all-zero for anything hidden - see hideInstance's own
+     * doc). Exists specifically so a voxel-destruction result can keep
+     * tracking its original instance's own ongoing animation instead
+     * of freezing at wherever it happened to be at the moment it broke
+     * - a shot-up door should still swing, damage and all. An earlier
+     * version of this fix captured a one-time snapshot at destruction
+     * time instead, which was reported as visibly wrong (the debris
+     * stopped following the door entirely) - this recomputes fresh
+     * every time it's called instead, the same way worldTransforms
+     * itself would if hiding didn't zero it. Not cheap to call per-
+     * instance (a full scene resolve every time) - a caller that needs
+     * several indices from the same frame should call this ONCE and
+     * reuse the result, not call it once per index. */
+    public Matrix4f[] resolveLiveTransforms() {
+        return new HierarchyResolver().resolve(scene, instanceAnimTime);
     }
 
     /** World-space ROTATION of instance i, separate from
@@ -354,7 +475,37 @@ public final class PbdRenderer implements AutoCloseable {
      * context here to render and look at), but the missing rotation
      * application is unambiguous either way. */
     public Quaternionf instanceWorldRotation(int instanceIndex) {
-        return worldTransforms[instanceIndex].getNormalizedRotation(new Quaternionf());
+        return extractRotationRobust(worldTransforms[instanceIndex]);
+    }
+
+    /** Same fix, same reason, as Main.java's own extractRotationRobust
+     * (that copy's own doc has the full story: a direct numeric test
+     * confirmed JOML's Matrix4f.getNormalizedRotation() returns
+     * something that ISN'T EVEN A VALID UNIT QUATERNION for a matrix
+     * with strongly non-uniform scale - a 27:1 ratio between axes in
+     * the real reported case). Duplicated rather than shared across
+     * the two files for the same reason several other small helpers in
+     * this codebase already are (see e.g. _shared_remote_cache_dir in
+     * the Python addon's own history) - a two-line static helper isn't
+     * worth a new shared utility class or a public-API change to pull
+     * across a package boundary for. This copy specifically matters for
+     * instanceWorldRotation just above: container-item placement/hit-
+     * testing (ContainerContents.itemWorldPosition and
+     * removeNearestToRay, both driven by this method) would have
+     * inherited the exact same wrong-rotation bug for any container
+     * whose own scale is non-uniform enough to trigger it - most of
+     * them, to some degree, since a storage cube is rarely perfectly
+     * cubic. */
+    private static Quaternionf extractRotationRobust(Matrix4f m) {
+        Vector3f colX = new Vector3f(m.m00(), m.m01(), m.m02()).normalize();
+        Vector3f colY = new Vector3f(m.m10(), m.m11(), m.m12()).normalize();
+        Vector3f colZ = new Vector3f(m.m20(), m.m21(), m.m22()).normalize();
+        Matrix4f rotOnly = new Matrix4f(
+            colX.x, colX.y, colX.z, 0,
+            colY.x, colY.y, colY.z, 0,
+            colZ.x, colZ.y, colZ.z, 0,
+            0, 0, 0, 1);
+        return rotOnly.getNormalizedRotation(new Quaternionf());
     }
 
     public PbdScene scene() {
@@ -411,6 +562,16 @@ public final class PbdRenderer implements AutoCloseable {
             checkSoundTrigger(inst, timeBeforeUpdate, instanceAnimTime[i]);
         }
         worldTransforms = new HierarchyResolver().resolve(scene, instanceAnimTime);
+        // Re-apply every hideInstance() call THIS rebuild would
+        // otherwise silently undo - see hiddenInstances' own doc. Must
+        // run AFTER the HierarchyResolver line above, never before -
+        // that call replaces the whole array wholesale, so anything
+        // done to it earlier in this method would just be discarded.
+        if (hiddenInstances != null) {
+            for (int i = 0; i < hiddenInstances.length; i++) {
+                if (hiddenInstances[i]) worldTransforms[i] = new Matrix4f().scale(0f);
+            }
+        }
         uploadWorldTransforms(worldTransforms);
     }
 
@@ -565,6 +726,17 @@ public final class PbdRenderer implements AutoCloseable {
      * rather than the exit point, since "the ray started inside" should
      * count as a hit at the camera itself, not somewhere past the box.
      */
+    /** Public wrapper around the private canonical-local-space ray-box
+     * test below - exists for a caller (Main.java's own G-key re-target
+     * logic) that needs to test a ray against an arbitrary local-space
+     * transform it already has in hand (an already-destroyed instance's
+     * own LIVE transform, from resolveLiveTransforms - not something
+     * findDestructibleAlongRay's own internal loop, which only ever
+     * walks scene.instances itself, has any way to be handed instead). */
+    public float rayBoxIntersectionPublic(Vector3f origin, Vector3f dir, float minExtent, float maxExtent) {
+        return rayBoxIntersection(origin, dir, minExtent, maxExtent);
+    }
+
     private float rayBoxIntersection(Vector3f origin, Vector3f dir, float minExtent, float maxExtent) {
         float tMin = Float.NEGATIVE_INFINITY;
         float tMax = Float.POSITIVE_INFINITY;
@@ -583,7 +755,17 @@ public final class PbdRenderer implements AutoCloseable {
             if (tMin > tMax) return -1;
         }
         if (tMax < 0) return -1; // box is entirely behind the ray origin
-        return Math.max(tMin, 0f);
+        float result = Math.max(tMin, 0f);
+        // Defensive second layer, on top of the caller-side hiddenInstances
+        // skip above (the actual root cause this turn's fix addresses) -
+        // NaN can only reach here if some OTHER path this method wasn't
+        // specifically audited for feeds it a degenerate direction/matrix
+        // (dir containing NaN itself, say) - Float.isNaN is the one check
+        // that's actually true for NaN (NaN != NaN is true, NaN < x and
+        // NaN > x are both false, which is exactly how a NaN t used to
+        // slip through every comparison in this method silently rather
+        // than being caught anywhere).
+        return Float.isNaN(result) ? -1 : result;
     }
     /** Same ray-vs-oriented-box technique as toggleKeyframedInstanceAlongRay
      * above, applied to metadata=true instances specifically (container
@@ -616,6 +798,16 @@ public final class PbdRenderer implements AutoCloseable {
      * where to look; if something logs HIT here but G still visibly
      * does nothing, the bug is downstream in voxelize()/rendering, not
      * in this method at all. */
+    /** The local-space (canonical, UNSCALED -0.5..0.5) hit point from
+     * the most recent findDestructibleAlongRay call that found
+     * something - a caller wanting to carve a crater/hole around the
+     * impact (see PrimitiveVoxelizer's own collectFilledUnitVoxels, and
+     * the G-key handler in Main.java) needs this in addition to just
+     * WHICH instance got hit. Set alongside closestIndex, so it always
+     * corresponds to whatever this same call's own return value refers
+     * to - not meaningful (and not touched) if that return value is -1. */
+    public final Vector3f lastHitLocalPoint = new Vector3f();
+
     public int findDestructibleAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
         int closestIndex = -1;
         float closestDist = Float.MAX_VALUE;
@@ -633,6 +825,31 @@ public final class PbdRenderer implements AutoCloseable {
             }
             if ("true".equals(inst.params.get("metadata"))) {
                 System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (metadata=true, an invisible bin-packing volume)");
+                continue;
+            }
+            if (hiddenInstances != null && i < hiddenInstances.length && hiddenInstances[i]) {
+                // THE actual root cause of a real, reported "raycast
+                // often returns NONE" bug, confirmed directly against a
+                // real log: hideInstance() zeroes worldTransforms[i]'s
+                // own scale to make an already-destroyed instance
+                // invisible - a zero-scale matrix is SINGULAR
+                // (determinant 0), so invWorld below (a straight
+                // .invert() of it) produces NaN/Infinity throughout,
+                // which the rest of this method never explicitly
+                // checked for - Math.max/Math.min silently propagate a
+                // NaN t all the way out to "HIT at world-dist=NaN" (the
+                // log's own literal words for several already-destroyed
+                // instances in the exact same scene this was reported
+                // against). A NaN world-dist can never satisfy
+                // `worldDist < closestDist` (any comparison against NaN
+                // is false in IEEE 754), so it can never win - but
+                // computing it at all was pointless AND, worse, this
+                // instance's own original bounding box means nothing
+                // once it's been replaced by voxel debris (the retarget
+                // ray-sphere test in Main.java is what's actually meant
+                // to catch a second hit on it) - skipping it here is
+                // both the fix and the more correct semantics.
+                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (already destroyed - see the retarget/re-hit path instead)");
                 continue;
             }
 
@@ -656,6 +873,7 @@ public final class PbdRenderer implements AutoCloseable {
             if (worldDist < closestDist) {
                 closestDist = worldDist;
                 closestIndex = i;
+                lastHitLocalPoint.set(localHit);
             }
         }
         System.out.println("[G-key] closest hit: " + (closestIndex < 0 ? "NONE" : "#" + closestIndex + " '" + scene.instances.get(closestIndex).id + "'"));
@@ -708,6 +926,11 @@ public final class PbdRenderer implements AutoCloseable {
         if (!hasAnimatedInstances) return -1;
         int closestIndex = -1;
         float closestDist = Float.MAX_VALUE;
+        // Computed once, ONLY if there's actually a hidden instance to
+        // need it for (resolveLiveTransforms isn't cheap - see its own
+        // doc) - null otherwise, and never touched below unless an
+        // instance turns out to actually be hidden.
+        Matrix4f[] live = null;
         for (int i = 0; i < scene.instances.size(); i++) {
             if (Double.isNaN(instanceAnimTime[i])) continue;
             if (instanceLoop[i]) continue; // ping-pongs continuously, clicks have no effect on it
@@ -723,7 +946,27 @@ public final class PbdRenderer implements AutoCloseable {
             // canonical -0.5..0.5 box there respects each axis's real
             // size instead of inflating every axis to match the
             // longest one.
-            Matrix4f invWorld = new Matrix4f(worldTransforms[i]).invert();
+            //
+            // A HIDDEN (voxel-destroyed) instance's own worldTransforms
+            // entry is zeroed-scale (see hideInstance's own doc) - a
+            // degenerate box with no volume a click could ever land in,
+            // regardless of the NaN-from-inverting-a-singular-matrix
+            // issue rayBoxIntersection itself now guards against
+            // separately. The actual fix for a real, reported
+            // "clicking a voxel no longer triggers its animation" bug:
+            // its LIVE transform (the same one the voxel debris is
+            // actually drawn at, animation included - see
+            // resolveLiveTransforms's own doc) is what a click should
+            // be tested against instead, since debris is still
+            // logically "the same door", just damaged - not something a
+            // player should lose the ability to open/close by shooting
+            // it.
+            Matrix4f effectiveTransform = worldTransforms[i];
+            if (hiddenInstances != null && i < hiddenInstances.length && hiddenInstances[i]) {
+                if (live == null) live = resolveLiveTransforms();
+                effectiveTransform = live[i];
+            }
+            Matrix4f invWorld = new Matrix4f(effectiveTransform).invert();
             Vector3f localOrigin = invWorld.transformPosition(new Vector3f(rayOrigin));
             Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
 
@@ -735,7 +978,7 @@ public final class PbdRenderer implements AutoCloseable {
             // comparable across instances) - re-derive the world-space
             // hit point and measure from the real ray origin.
             Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
-            Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
+            Vector3f worldHit = effectiveTransform.transformPosition(new Vector3f(localHit));
             float worldDist = worldHit.distance(rayOrigin);
             if (worldDist < closestDist) {
                 closestDist = worldDist;
@@ -920,6 +1163,34 @@ public final class PbdRenderer implements AutoCloseable {
         normalTextureArray = MaterialTextureArray.build(normalPaths);
         roughnessTextureArray = MaterialTextureArray.build(roughnessPaths);
         displacementTextureArray = MaterialTextureArray.build(displacementPaths);
+        // Reads the SAME pixel data textureArray.build() above already
+        // decoded for its own GL upload - MaterialTextureArray.PixelData,
+        // copied there from that call's own single stbi_load per file -
+        // rather than calling STBImage separately here a second time.
+        // The very first version of this cache DID call stbi_load again,
+        // right here, on these same paths - and a real crash log placed
+        // the failure immediately after THIS array's own resize step for
+        // a large (3000x2000) JPEG, strongly pointing at the double
+        // decode itself (two native allocate/decode/free cycles on the
+        // same large image back to back) as the actual problem, not
+        // WHEN or WHERE stbi_load was being called from. This also
+        // fixes a second, separate, real concern raised directly: a
+        // cache built by scanning scene.materialOverrides only ONCE,
+        // here, would silently miss any texture loaded later through
+        // this engine's own intended hot-loading - reading from
+        // textureArray's own already-built data instead means this
+        // cache can never drift out of sync with whatever textureArray
+        // itself was actually built from, including a future re-
+        // upload() triggered by a hot-loaded asset, since it's the same
+        // call, not a second independent one running on its own
+        // schedule.
+        voxelTexturePixels.clear();
+        for (Path texturePath : texturePaths) {
+            MaterialTextureArray.PixelData pd = textureArray.pixelDataOf(texturePath);
+            if (pd != null) {
+                voxelTexturePixels.put(texturePath.toString(), new VoxelTexturePixels(pd.rgba(), pd.width(), pd.height()));
+            }
+        }
         textureArrayGlId = textureArray.glId;
         normalTextureArrayGlId = normalTextureArray.glId;
         roughnessTextureArrayGlId = roughnessTextureArray.glId;
@@ -1193,6 +1464,8 @@ public final class PbdRenderer implements AutoCloseable {
      * is no un-hide, matching a destroyed primitive not coming back
      * either. */
     public void hideInstance(int instanceIndex) {
+        if (hiddenInstances == null) hiddenInstances = new boolean[scene.instances.size()];
+        hiddenInstances[instanceIndex] = true;
         worldTransforms[instanceIndex] = new Matrix4f().scale(0f);
         uploadWorldTransforms(worldTransforms);
     }
