@@ -207,15 +207,68 @@ public final class PbdEngine {
             return scene.instances.get(inst.parentIndex).id;
         }
 
-        /** Pass null to make this instance a root (no parent). Throws
-         * the same IllegalArgumentException as find() if parentName
-         * doesn't exist - NOT if it would create a cycle (this facade
-         * doesn't walk the chain to check; PbdScene.resolveHierarchy
-         * remains the actual authority the engine relies on, this is
-         * just convenient wiring, not a substitute validator). */
+        /** Attaches this instance to parentName - any primitive to any
+         * other, a lever arm's pivot included: it then moves, turns and
+         * (for a light) aims with its parent from here on - or, with
+         * null, makes it a root again.
+         *
+         * Sets the parent by NAME (what the saved text and every other
+         * format write as parent=) and then re-runs
+         * PbdScene.resolveHierarchy, which puts every parent ahead of its
+         * children in the instance list (the order HierarchyResolver
+         * relies on) and recomputes every parentIndex. Because that can
+         * reorder the list, a caller must not hold on to instance INDICES
+         * across this call (names are the stable handle, which is what
+         * this whole facade is keyed by); a renderer showing the scene
+         * needs a fresh upload() afterwards, like after any structural
+         * edit.
+         *
+         * Throws IllegalArgumentException - and changes nothing - if
+         * instanceName or parentName doesn't exist, or if the attachment
+         * would make an instance its own ancestor (a cycle).
+         *
+         * The pose is NOT compensated in either direction: the instance
+         * keeps its pos/rot/scale exactly as written, so after attaching
+         * they are read relative to the new parent (the part moves to
+         * wherever that puts it), and after detaching (null) they are
+         * world values again (a part that was riding on a moved or turned
+         * parent jumps back to its own written pose). Set the position
+         * you want after the call.
+         *
+         * It used to set only parentIndex: the name was never recorded, so
+         * the attachment was lost on save and on the next
+         * resolveHierarchy, and a parent added to the scene AFTER its
+         * child broke the resolver's parent-first walk. */
         public void setParent(String instanceName, String parentName) {
             PbdInstance inst = find(instanceName);
-            inst.parentIndex = (parentName == null) ? -1 : scene.instances.indexOf(find(parentName));
+            if (parentName == null) {
+                inst.parentId = null;
+                inst.parentIndex = -1;
+                return;
+            }
+            PbdInstance parent = find(parentName);
+            for (PbdInstance ancestor = parent; ancestor != null; ancestor = ancestor.parentId == null ? null : findOrNull(ancestor.parentId)) {
+                if (ancestor == inst) {
+                    throw new IllegalArgumentException("Cannot attach '" + instanceName + "' to '" + parentName
+                        + "': '" + parentName + "' is already '" + instanceName + "' itself or one of its own children");
+                }
+            }
+            String previous = inst.parentId;
+            inst.parentId = parent.id;
+            try {
+                scene.resolveHierarchy();
+            } catch (RuntimeException e) {
+                inst.parentId = previous; // leave the scene as it was if the hierarchy cannot be resolved
+                scene.resolveHierarchy();
+                throw e;
+            }
+        }
+
+        private PbdInstance findOrNull(String instanceName) {
+            for (PbdInstance inst : scene.instances) {
+                if (inst.id.equals(instanceName)) return inst;
+            }
+            return null;
         }
 
         /** false (never null) for an instance that never set

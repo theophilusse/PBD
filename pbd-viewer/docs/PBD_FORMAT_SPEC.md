@@ -114,6 +114,35 @@ cube door1 {
 - `rot` in a keyframe is Euler degrees, same convention/axis order as
   the instance-level `rot=`.
 
+## Lever-arm
+
+```
+cube door1 {
+    pos = (0, 1, 0)
+    leverArm { openPos=(0,1,0) openRot=(0,90,0) speed=1.0 }
+}
+```
+
+- An alternative to `keyframe` for a two-state object (open/closed,
+  extended/retracted) whose motion doesn't have to play out on a fixed
+  schedule the way a keyframe clip does — see `docs/ENGINE_DEV_GUIDE.md`
+  for how the engine actually drives the resulting value (scripted
+  easing by default, or a continuous value set directly from outside,
+  e.g. a mouse drag).
+- At most one `leverArm` block per instance; a non-empty `keyframe`
+  list takes precedence if an instance somehow has both.
+- This instance's own base `pos`/`rot` is the closed end (arm value 0);
+  `openPos`/`openRot` here are the open end (arm value 1) — a
+  continuous value in between lerps the instance between the two.
+- `openPos`/`openRot` are each optional, same "omitted means hold this
+  instance's own base value" convention a keyframe's `pos`/`rot` already
+  has — lets a pure-rotation door (a hinge) write only `openRot` without
+  repeating its position.
+- `speed` is optional (default 1.0), in arm-value units per second. It
+  only governs the DEFAULT scripted easing (toggled open/closed, same
+  idea as a keyframe clip playing); a caller driving the value directly
+  ignores it entirely — see the engine guide.
+
 ## Modifiers
 
 ```
@@ -138,6 +167,8 @@ include_material "metal.pbdmat"    # repeatable - accumulates, last include wins
 A `.pbdmat` file:
 
 ```
+author = Jane Doe                # required for upload (see server/upload.php) - repeatable, same as a .pbd's own author=; unquoted is fine too (reads to end of line, same as name=/kind=/author= on the .pbd side)
+
 material wood {
     color            = (0.5, 0.3, 0.15)
     shininess        = 8

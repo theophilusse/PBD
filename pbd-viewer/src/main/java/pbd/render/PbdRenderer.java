@@ -2,6 +2,7 @@ package pbd.render;
 
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -11,6 +12,7 @@ import pbd.format.PbdInstance;
 import pbd.format.PbdModifier;
 import pbd.format.PbdScene;
 import pbd.format.PrimitiveRegistry;
+import pbd.voxel.DestructionWorld;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -193,20 +195,24 @@ public final class PbdRenderer implements AutoCloseable {
     public void upload(PbdScene scene, PrimitiveRegistry primitiveRegistry,
                         ModifierRegistry modifierRegistry, MaterialRegistry materialRegistry) {
         this.scene = scene;
-        this.hasAnimatedInstances = scene.instances.stream().anyMatch(inst -> !inst.keyframes.isEmpty());
+        this.hasAnimatedInstances = scene.instances.stream().anyMatch(inst -> !inst.keyframes.isEmpty() || inst.leverArm != null);
         this.instanceAnimTime = new double[scene.instances.size()];
         this.instanceOpen = new boolean[scene.instances.size()];
         this.instanceLoop = new boolean[scene.instances.size()];
         this.instanceLoopForward = new boolean[scene.instances.size()];
         for (int i = 0; i < scene.instances.size(); i++) {
             PbdInstance inst = scene.instances.get(i);
-            // Starts closed (sitting at the first keyframe's time) - a
-            // cabinet loads shut, not mid-animation.
+            // Keyframed instances start closed - sitting at the first
+            // keyframe's time - a cabinet loads shut, not mid-animation.
             instanceAnimTime[i] = inst.keyframes.isEmpty() ? Double.NaN : inst.keyframes.get(0).time;
             instanceOpen[i] = false;
             instanceLoop[i] = "true".equals(inst.params.get("loop"));
             instanceLoopForward[i] = true;
         }
+        // Lever arms live in their own pure class (see LeverArmSystem):
+        // a fresh one per upload, so nothing of a previous scene's arm
+        // state - values, locks, drags - can carry over into this one.
+        this.arms = new LeverArmSystem(scene);
         this.primitiveRegistry = primitiveRegistry;
         this.modifierRegistry = modifierRegistry;
         this.materialRegistry = materialRegistry;
@@ -289,7 +295,21 @@ public final class PbdRenderer implements AutoCloseable {
 
     private boolean hasAnimatedInstances;
     private double[] instanceAnimTime;   // NaN for non-keyframed instances; otherwise this instance's own local time
-    private boolean[] instanceOpen;      // target state: true = animating toward the last keyframe, false = toward the first
+    // Every lever arm's run-time state - its live 0..1 value (0 = closed,
+    // the instance's own base pose; 1 = the authored open pose), who is
+    // driving it (scripted easing, a mouse drag, a lock), what can be
+    // grabbed through the primitives attached to it, and its open/close
+    // sounds - lives in LeverArmSystem, a pure class with no GL in it
+    // (tools/regression/RegressionLeverArmSystem exercises it without a
+    // window). This class is its adapter: it feeds the values to
+    // HierarchyResolver, plays the sounds and keeps the GPU buffers
+    // current. Rebuilt by every upload(), never shared across scenes.
+    private LeverArmSystem arms;
+    // Where each enabled light was when the lights buffer was last built -
+    // a light parented to a door or a lever moves with it, and the buffer
+    // is rebuilt when LightTracker sees one has moved.
+    private final LightTracker lightTracker = new LightTracker();
+    private boolean[] instanceOpen;      // target state: true = animating toward the open end (last keyframe, or leverArm's open pose), false = toward the closed end (first keyframe, or this instance's own base pose) - shared by both mechanisms, since "which way is this door toggled" is the same question either way. Keyframed instances only: a lever arm keeps its own target and value inside LeverArmSystem, and the facade (isInstanceOpen/isInstanceFullyOpen/isInstanceFullyClosed) reads the arm's value rather than any toggle flag, since a drag-driven value has no discrete "toggled" moment at all.
     // Tracks hideInstance()'s own effect SEPARATELY from worldTransforms
     // itself - needed because updateAnimation's own HierarchyResolver
     // rebuild (see that method's own doc) replaces the ENTIRE
@@ -311,22 +331,43 @@ public final class PbdRenderer implements AutoCloseable {
      * (index out of the keyframed set entirely) or one still mid-animation. */
     public boolean isInstanceFullyOpen(int instanceIndex) {
         if (instanceIndex < 0 || instanceIndex >= scene.instances.size()) return false;
-        if (Double.isNaN(instanceAnimTime[instanceIndex])) return false;
         PbdInstance inst = scene.instances.get(instanceIndex);
-        if (inst.keyframes.isEmpty()) return false;
-        double lastTime = inst.keyframes.get(inst.keyframes.size() - 1).time;
-        return instanceOpen[instanceIndex] && Math.abs(instanceAnimTime[instanceIndex] - lastTime) < 0.01;
+        if (!inst.keyframes.isEmpty()) {
+            if (Double.isNaN(instanceAnimTime[instanceIndex])) return false;
+            double lastTime = inst.keyframes.get(inst.keyframes.size() - 1).time;
+            return instanceOpen[instanceIndex] && Math.abs(instanceAnimTime[instanceIndex] - lastTime) < 0.01;
+        }
+        // Lever-arm counterpart: "fully open" means the arm value has
+        // actually reached 1.0 - purely that, NOT also instanceOpen's own
+        // toggle-intent flag (unlike the keyframe branch above). A
+        // keyframed door only ever moves via a discrete toggle, so asking
+        // "was it toggled open AND has playback finished" is a meaningful
+        // extra check there; a lever-arm's value can equally come from a
+        // continuous drag with no toggle at all, so requiring instanceOpen
+        // to also agree would make a hand-dragged door never register as
+        // fully open. The arm value alone is already the authoritative
+        // answer to "how open is it."
+        return arms.isFullyOpen(instanceIndex);
     }
 
-    /** True the instant this instance is TOGGLED toward its open pose,
-     * regardless of how far the swing animation has actually played -
-     * unlike isInstanceFullyOpen, which additionally waits for playback
-     * to reach the last keyframe. Container triggers use this one: a
-     * player shouldn't have to wait out a door's whole swing animation
-     * before its contents appear, only isInstanceFullyOpen's stricter
-     * "animation has actually finished" sense is appropriate for that. */
+    /** For a keyframed instance: true the instant it's TOGGLED toward its
+     * open pose, regardless of how far the swing animation has actually
+     * played - unlike isInstanceFullyOpen, which additionally waits for
+     * playback to reach the last keyframe. Container triggers use this
+     * one: a player shouldn't have to wait out a door's whole swing
+     * animation before its contents appear, only isInstanceFullyOpen's
+     * stricter "animation has actually finished" sense is appropriate for
+     * that.
+     *
+     * For a lever-arm instance: true once its arm value has moved open by
+     * ANY visible amount, read directly off the arm's live value
+     * (LeverArmSystem) rather than a toggle flag - a drag-driven arm has no discrete "toggled" moment
+     * the way a click does, so the toggle-intent flag isn't a meaningful
+     * question to ask here; the continuous value already is the real
+     * answer, the same way isInstanceFullyOpen above now reads it. */
     public boolean isInstanceOpen(int instanceIndex) {
         if (instanceIndex < 0 || instanceIndex >= scene.instances.size()) return false;
+        if (arms.has(instanceIndex) && Double.isNaN(instanceAnimTime[instanceIndex])) return arms.isOpen(instanceIndex); // keyframes win when both are authored, as in HierarchyResolver
         return instanceOpen[instanceIndex];
     }
 
@@ -346,10 +387,17 @@ public final class PbdRenderer implements AutoCloseable {
     public boolean isInstanceFullyClosed(int instanceIndex) {
         if (instanceIndex < 0 || instanceIndex >= scene.instances.size()) return true;
         PbdInstance inst = scene.instances.get(instanceIndex);
-        if (inst.keyframes.isEmpty()) return true;
-        if (Double.isNaN(instanceAnimTime[instanceIndex])) return true;
-        double firstTime = inst.keyframes.get(0).time;
-        return !instanceOpen[instanceIndex] && Math.abs(instanceAnimTime[instanceIndex] - firstTime) < 0.01;
+        if (!inst.keyframes.isEmpty()) {
+            if (Double.isNaN(instanceAnimTime[instanceIndex])) return true;
+            double firstTime = inst.keyframes.get(0).time;
+            return !instanceOpen[instanceIndex] && Math.abs(instanceAnimTime[instanceIndex] - firstTime) < 0.01;
+        }
+        // Lever-arm counterpart, same shape as isInstanceFullyOpen above -
+        // the arm value alone decides this, not instanceOpen, for the
+        // same reason isInstanceFullyOpen no longer checks it either: a
+        // drag-driven door can sit at 0.0 with no toggle having happened
+        // at all, and that's still genuinely "fully closed."
+        return arms.isFullyClosed(instanceIndex); // true as well for an instance with no arm: no animation mechanism at all - always "closed", same existing rule as before lever-arm existed
     }
 
     /** Whether the container metaIdx belongs to should be considered
@@ -396,11 +444,10 @@ public final class PbdRenderer implements AutoCloseable {
      * exposed through the gap instead of disappearing behind a closed
      * door. This is also the accessor a zombie's own AI would check to
      * know whether it can still see a hiding player through a door
-     * that's ajar rather than fully shut - see this project's own
-     * roadmap for the fuller getArmRotationValue version of this
-     * question once a lever-arm's own continuous 0..1 position exists;
-     * this open/closed version is what's available today. Promoted here
-     * for the same reason isContainerOpen was - a modder's own code
+     * that's ajar rather than fully shut - for the finer-grained version
+     * of that question (exactly HOW ajar, not just open-vs-closed), see
+     * getArmValue, which now exists for a lever-arm instance. Promoted
+     * here for the same reason isContainerOpen was - a modder's own code
      * couldn't reach the Main.java-private version this replaces. */
     public boolean areAllDoorsClosed(int metaIdx) {
         java.util.List<String> triggers = scene.instances.get(metaIdx).containerTriggers;
@@ -458,7 +505,7 @@ public final class PbdRenderer implements AutoCloseable {
      * several indices from the same frame should call this ONCE and
      * reuse the result, not call it once per index. */
     public Matrix4f[] resolveLiveTransforms() {
-        return new HierarchyResolver().resolve(scene, instanceAnimTime);
+        return new HierarchyResolver().resolve(scene, instanceAnimTime, arms.values());
     }
 
     /** World-space ROTATION of instance i, separate from
@@ -514,54 +561,73 @@ public final class PbdRenderer implements AutoCloseable {
     private boolean[] instanceLoopForward; // current ping-pong direction, looping instances only
     private static final double KEYFRAME_PLAYBACK_RATE = 1.0; // seconds of animation time per real second - matches the time= units keyframes are authored in
 
+    /** Whether instance i is driven by EITHER animation mechanism this
+     * class supports (keyframes or lever-arm) - the shared gate used
+     * everywhere a click or a setOpen() call needs to know "does
+     * toggling instanceOpen[i] mean anything for this instance at all",
+     * without caring which of the two it actually is. Not used inside
+     * updateAnimation itself, which (unlike these callers) DOES need to
+     * tell the two apart, to run the right easing math for each. */
+    private boolean isAnimatable(int i) {
+        return !Double.isNaN(instanceAnimTime[i]) || arms.has(i);
+    }
+
     /**
-     * Advances every keyframed instance's own local time toward its
-     * current open/closed target, then re-resolves and re-uploads world
-     * transforms - only does any work if the scene actually has a
-     * keyframed instance, so a static scene pays nothing extra per
-     * frame. Call once per frame, before render().
+     * Advances every keyframed or lever-arm instance's own progress
+     * toward its current open/closed target, then re-resolves and
+     * re-uploads world transforms - only does any work if the scene
+     * actually has an animatable instance of either kind, so a static
+     * scene pays nothing extra per frame. Call once per frame, before
+     * render().
      */
     public pbd.audio.SoundPlayer soundPlayer; // null = no audio (default) - set from Main.java once a SoundPlayer exists; keyframe sound triggers below are a no-op until then
 
     public void updateAnimation(double dt) {
         if (!hasAnimatedInstances) return;
         for (int i = 0; i < scene.instances.size(); i++) {
-            if (Double.isNaN(instanceAnimTime[i])) continue;
             PbdInstance inst = scene.instances.get(i);
-            double timeBeforeUpdate = instanceAnimTime[i];
-            double lastTime = inst.keyframes.get(inst.keyframes.size() - 1).time;
-            double firstTime = inst.keyframes.get(0).time;
-            double step = KEYFRAME_PLAYBACK_RATE * dt;
+            if (!Double.isNaN(instanceAnimTime[i])) {
+                double timeBeforeUpdate = instanceAnimTime[i];
+                double lastTime = inst.keyframes.get(inst.keyframes.size() - 1).time;
+                double firstTime = inst.keyframes.get(0).time;
+                double step = KEYFRAME_PLAYBACK_RATE * dt;
 
-            if (instanceLoop[i]) {
-                // Continuous ping-pong, ignoring open/closed state and
-                // clicks entirely - a ceiling fan or decorative element,
-                // not a container someone opens and closes.
-                if (instanceLoopForward[i]) {
-                    instanceAnimTime[i] += step;
-                    if (instanceAnimTime[i] >= lastTime) {
-                        instanceAnimTime[i] = lastTime;
-                        instanceLoopForward[i] = false;
+                if (instanceLoop[i]) {
+                    // Continuous ping-pong, ignoring open/closed state
+                    // and clicks entirely - a ceiling fan or decorative
+                    // element, not a container someone opens and closes.
+                    if (instanceLoopForward[i]) {
+                        instanceAnimTime[i] += step;
+                        if (instanceAnimTime[i] >= lastTime) {
+                            instanceAnimTime[i] = lastTime;
+                            instanceLoopForward[i] = false;
+                        }
+                    } else {
+                        instanceAnimTime[i] -= step;
+                        if (instanceAnimTime[i] <= firstTime) {
+                            instanceAnimTime[i] = firstTime;
+                            instanceLoopForward[i] = true;
+                        }
                     }
-                } else {
-                    instanceAnimTime[i] -= step;
-                    if (instanceAnimTime[i] <= firstTime) {
-                        instanceAnimTime[i] = firstTime;
-                        instanceLoopForward[i] = true;
-                    }
+                    continue;
                 }
-                continue;
-            }
 
-            double target = instanceOpen[i] ? lastTime : firstTime;
-            if (instanceAnimTime[i] < target) {
-                instanceAnimTime[i] = Math.min(target, instanceAnimTime[i] + step);
-            } else if (instanceAnimTime[i] > target) {
-                instanceAnimTime[i] = Math.max(target, instanceAnimTime[i] - step);
+                double target = instanceOpen[i] ? lastTime : firstTime;
+                if (instanceAnimTime[i] < target) {
+                    instanceAnimTime[i] = Math.min(target, instanceAnimTime[i] + step);
+                } else if (instanceAnimTime[i] > target) {
+                    instanceAnimTime[i] = Math.max(target, instanceAnimTime[i] - step);
+                }
+                checkSoundTrigger(inst, timeBeforeUpdate, instanceAnimTime[i]);
             }
-            checkSoundTrigger(inst, timeBeforeUpdate, instanceAnimTime[i]);
         }
-        worldTransforms = new HierarchyResolver().resolve(scene, instanceAnimTime);
+        // Lever arms are stepped by LeverArmSystem (easing toward the
+        // open/closed target at each arm's own `speed`, ping-pong for a
+        // looping one, nothing at all for a locked or hand-held one), which
+        // also reports the open/close sound each arm owes - played here,
+        // since this is the class that owns the SoundPlayer.
+        arms.update(dt, soundPlayer == null ? null : soundPlayer::play);
+        worldTransforms = new HierarchyResolver().resolve(scene, instanceAnimTime, arms.values());
         // Re-apply every hideInstance() call THIS rebuild would
         // otherwise silently undo - see hiddenInstances' own doc. Must
         // run AFTER the HierarchyResolver line above, never before -
@@ -573,6 +639,12 @@ public final class PbdRenderer implements AutoCloseable {
             }
         }
         uploadWorldTransforms(worldTransforms);
+        // A light hung on a swinging door or a lever moved with it just
+        // now: its entry in the lights buffer is stale until rebuilt (the
+        // buffer used to be filled once, at load, and again only on a
+        // light switch - the lamp's mesh moved away and its light stayed
+        // behind).
+        if (lightTracker.moved(worldTransforms)) uploadLights(scene);
     }
 
     /** Plays any keyframe's sound field whose time was just crossed
@@ -767,117 +839,29 @@ public final class PbdRenderer implements AutoCloseable {
         // than being caught anywhere).
         return Float.isNaN(result) ? -1 : result;
     }
-    /** Same ray-vs-oriented-box technique as toggleKeyframedInstanceAlongRay
-     * above, applied to metadata=true instances specifically (container
-     * volumes) instead of animated ones - for the hide-in-container
-     * feature (Main.java), which needs to know which bounding box the
-     * player is actually aiming at, independent of whether it's
-     * currently open/showing items. Returns the closest hit's instance
-     * index, or -1. */
-    /** Same ray-vs-oriented-box technique again, this time over EVERY
-     * instance that could plausibly be a voxel-destruction target -
-     * anything with real geometry (not a metadata volume or an empty
-     * ref/group anchor) and not indestructible=true. Returns the
-     * closest hit's instance index, or -1 - the "shoot to test the
-     * primitive->voxel transform" trigger (Main.java) uses this to find
-     * what to voxelize. */
-    /** Verbose per-instance logging on every call - the G key's own
-     * raycast, deliberately as detailed as removeNearestToRay's own
-     * per-item log (see that method's doc) and for the same reason: a
-     * repeated report that this finds nothing, with no crash and
-     * nothing wrong found by code review alone, means the next useful
-     * step is seeing the ACTUAL numbers from a real run, not another
-     * theory. Specifically separates "skipped before any geometry
-     * test" (indestructible/no-geometry-type/metadata-volume) from
-     * "geometry test ran and missed" (t < 0, ray-box gave no hit) -
-     * exactly the distinction between "the trigger/raycast system"
-     * and "the underlying voxel/destruction system" a bug report on
-     * this exact question asked for: if every candidate instance logs
-     * as SKIPPED, the raycast never even reaches a real geometry test;
-     * if instances log as TESTED-MISSED, the geometry test itself is
-     * where to look; if something logs HIT here but G still visibly
-     * does nothing, the bug is downstream in voxelize()/rendering, not
-     * in this method at all. */
-    /** The local-space (canonical, UNSCALED -0.5..0.5) hit point from
-     * the most recent findDestructibleAlongRay call that found
-     * something - a caller wanting to carve a crater/hole around the
-     * impact (see PrimitiveVoxelizer's own collectFilledUnitVoxels, and
-     * the G-key handler in Main.java) needs this in addition to just
-     * WHICH instance got hit. Set alongside closestIndex, so it always
-     * corresponds to whatever this same call's own return value refers
-     * to - not meaningful (and not touched) if that return value is -1. */
+
+    /** The hit point from the most recent findDestructibleAlongRay / destroyAt call that found
+     * something, in the hit instance's own LOCAL space (the canonical, UNSCALED -0.5..0.5 box
+     * for a primitive; the mesh's own units for a mesh). Set together with the index that call
+     * returned, so it always belongs to it - not meaningful (and not touched) after a miss. */
     public final Vector3f lastHitLocalPoint = new Vector3f();
 
+    /** The broad phase of the G key: the index of the nearest destructible, never-destroyed
+     * instance whose bounding box the ray crosses, or -1. The rule itself - what is skipped,
+     * which box a primitive or a mesh is tested against, the per-instance console trace that
+     * finally separated "the raycast never reaches a geometry test" from "the test missed" from
+     * "it hit but nothing happened" - lives in DestructionWorld.findFresh, where it runs under
+     * tools/regression without a window. */
     public int findDestructibleAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
-        int closestIndex = -1;
-        float closestDist = Float.MAX_VALUE;
-        System.out.println("[G-key] ray origin=" + rayOrigin + " dir=" + rayDir
-            + " checking " + scene.instances.size() + " instance(s)");
-        for (int i = 0; i < scene.instances.size(); i++) {
-            pbd.format.PbdInstance inst = scene.instances.get(i);
-            if (inst.indestructible) {
-                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (indestructible=true)");
-                continue;
-            }
-            if ("ref".equals(inst.type) || "group".equals(inst.type) || "light".equals(inst.type)) {
-                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (type=" + inst.type + ", no geometry of its own to hit)");
-                continue;
-            }
-            if ("true".equals(inst.params.get("metadata"))) {
-                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (metadata=true, an invisible bin-packing volume)");
-                continue;
-            }
-            if (hiddenInstances != null && i < hiddenInstances.length && hiddenInstances[i]) {
-                // THE actual root cause of a real, reported "raycast
-                // often returns NONE" bug, confirmed directly against a
-                // real log: hideInstance() zeroes worldTransforms[i]'s
-                // own scale to make an already-destroyed instance
-                // invisible - a zero-scale matrix is SINGULAR
-                // (determinant 0), so invWorld below (a straight
-                // .invert() of it) produces NaN/Infinity throughout,
-                // which the rest of this method never explicitly
-                // checked for - Math.max/Math.min silently propagate a
-                // NaN t all the way out to "HIT at world-dist=NaN" (the
-                // log's own literal words for several already-destroyed
-                // instances in the exact same scene this was reported
-                // against). A NaN world-dist can never satisfy
-                // `worldDist < closestDist` (any comparison against NaN
-                // is false in IEEE 754), so it can never win - but
-                // computing it at all was pointless AND, worse, this
-                // instance's own original bounding box means nothing
-                // once it's been replaced by voxel debris (the retarget
-                // ray-sphere test in Main.java is what's actually meant
-                // to catch a second hit on it) - skipping it here is
-                // both the fix and the more correct semantics.
-                System.out.println("  #" + i + " '" + inst.id + "' SKIPPED (already destroyed - see the retarget/re-hit path instead)");
-                continue;
-            }
+        DestructionWorld.Fresh fresh = findFresh(rayOrigin, rayDir);
+        if (fresh == null) return -1;
+        lastHitLocalPoint.set(fresh.localHit());
+        return fresh.index();
+    }
 
-            Matrix4f invWorld = new Matrix4f(worldTransforms[i]).invert();
-            Vector3f localOrigin = invWorld.transformPosition(new Vector3f(rayOrigin));
-            Vector3f localDir = invWorld.transformDirection(new Vector3f(rayDir));
-
-            float t = rayBoxIntersection(localOrigin, localDir, -0.5f, 0.5f);
-            if (t < 0) {
-                System.out.println("  #" + i + " '" + inst.id + "' type=" + inst.type
-                    + " world-pos=" + worldTransforms[i].getTranslation(new Vector3f())
-                    + " TESTED-MISSED (local ray-box test found no hit)");
-                continue;
-            }
-
-            Vector3f localHit = new Vector3f(localDir).mul(t).add(localOrigin);
-            Vector3f worldHit = worldTransforms[i].transformPosition(new Vector3f(localHit));
-            float worldDist = worldHit.distance(rayOrigin);
-            System.out.println("  #" + i + " '" + inst.id + "' type=" + inst.type
-                + " HIT at world-dist=" + worldDist);
-            if (worldDist < closestDist) {
-                closestDist = worldDist;
-                closestIndex = i;
-                lastHitLocalPoint.set(localHit);
-            }
-        }
-        System.out.println("[G-key] closest hit: " + (closestIndex < 0 ? "NONE" : "#" + closestIndex + " '" + scene.instances.get(closestIndex).id + "'"));
-        return closestIndex;
+    private DestructionWorld.Fresh findFresh(Vector3f rayOrigin, Vector3f rayDir) {
+        return destruction().findFresh(new Vector3d(rayOrigin.x, rayOrigin.y, rayOrigin.z),
+            new Vector3d(rayDir.x, rayDir.y, rayDir.z), System.out::println);
     }
 
     /** Same per-instance verbosity as findDestructibleAlongRay just
@@ -922,7 +906,16 @@ public final class PbdRenderer implements AutoCloseable {
         return closestIndex;
     }
 
-    public int toggleKeyframedInstanceAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
+    /** Closest-hit ray search over every eligible instance (the keyframed
+     * ones, for toggleKeyframedInstanceAlongRay): ray-vs-oriented-box,
+     * with a hidden (voxel-destroyed) instance tested at its live
+     * transform. eligible decides which instances even get geometry-tested
+     * at all. (Grabbing a lever arm is a different search - it also looks
+     * through every primitive attached to the arm and answers with the
+     * arm to move: LeverArmSystem.pick.)
+     * Returns -1 if nothing eligible is hit. */
+    private int findClosestInstanceAlongRay(Vector3f rayOrigin, Vector3f rayDir,
+            java.util.function.IntPredicate eligible) {
         if (!hasAnimatedInstances) return -1;
         int closestIndex = -1;
         float closestDist = Float.MAX_VALUE;
@@ -932,8 +925,8 @@ public final class PbdRenderer implements AutoCloseable {
         // instance turns out to actually be hidden.
         Matrix4f[] live = null;
         for (int i = 0; i < scene.instances.size(); i++) {
-            if (Double.isNaN(instanceAnimTime[i])) continue;
-            if (instanceLoop[i]) continue; // ping-pongs continuously, clicks have no effect on it
+            if (!eligible.test(i)) continue;
+            if (instanceLoop[i]) continue; // ping-pongs continuously, clicks/grabs have no effect on it
 
             // Ray-vs-oriented-box, not a uniform bounding sphere: a
             // sphere sized off the LARGEST axis (radius = max(sx,sy,sz))
@@ -985,6 +978,25 @@ public final class PbdRenderer implements AutoCloseable {
                 closestIndex = i;
             }
         }
+        return closestIndex;
+    }
+
+    /** Despite the name (kept to avoid disturbing every existing caller -
+     * see Main.java - over a rename with no behavior change of its
+     * own beyond what's described here), this is now KEYFRAME-ONLY. A
+     * lever-arm instance used to be toggled the same way (a click
+     * scripted-easing it fully open/closed), which turned out to be the
+     * wrong default: a lever-arm's point is that it does NOT have to
+     * move on a fixed, scripted animation, so player input for it is now
+     * exclusively the drag-and-drop pair below (findLeverArmGrabPoint /
+     * dragArmValueTowardRay), never this click-toggle. setOpen is still
+     * shared by both mechanisms, for a non-player caller (a script, an
+     * AI, a mod) that legitimately wants to just snap a lever-arm door
+     * open/closed programmatically, with no player drag involved at
+     * all - only the PLAYER-CLICK path narrowed here. */
+    public int toggleKeyframedInstanceAlongRay(Vector3f rayOrigin, Vector3f rayDir) {
+        int closestIndex = findClosestInstanceAlongRay(rayOrigin, rayDir,
+            i -> !Double.isNaN(instanceAnimTime[i]));
         if (closestIndex < 0) return -1;
 
         // linkGroup (a free-form field - see PbdParser's default case for
@@ -1001,7 +1013,7 @@ public final class PbdRenderer implements AutoCloseable {
             playSoundAtCurrentTime(closestIndex);
         } else {
             for (int i = 0; i < scene.instances.size(); i++) {
-                if (Double.isNaN(instanceAnimTime[i])) continue;
+                if (Double.isNaN(instanceAnimTime[i])) continue; // keyframe-only, same narrowing as the hit test above - a lever-arm door sharing this linkGroup is left alone, it's drag-only now
                 if (group.equals(scene.instances.get(i).params.get("linkGroup"))) {
                     instanceOpen[i] = newState;
                     playSoundAtCurrentTime(i);
@@ -1009,6 +1021,72 @@ public final class PbdRenderer implements AutoCloseable {
             }
         }
         return closestIndex;
+    }
+
+    /** What a click on a lever arm grabbed: instanceIndex is the ARM that
+     * will move (not necessarily the primitive the ray touched - see
+     * findLeverArmGrabPoint), localPoint the grabbed point in that arm's
+     * own local space. */
+    public record LeverArmGrab(int instanceIndex, Vector3f localPoint) {}
+
+    /** Read-only hit test for the first step of a drag (see
+     * dragArmValueTowardRay and setArmValue's own doc for the rest of it):
+     * the nearest primitive the ray hits among every lever arm and
+     * everything attached to one, answered as the ARM that should move
+     * plus the hit point in that arm's own LOCAL space - the fixed
+     * reference point a caller should hold onto for the whole drag, since
+     * its LOCAL position never changes while its WORLD position sweeps
+     * through the door's whole swing.
+     *
+     * "Everything attached" is the point: a door is usually a group pivot
+     * with a panel, a handle and a latch hanging on it (parent=), and the
+     * player grabs whichever of them is under the crosshair - any
+     * primitive type, at any depth - and it is the pivot's arm that moves
+     * (LeverArmSystem.pick). A hidden (voxel-destroyed) instance is tested
+     * at its live transform, the one its debris is drawn at.
+     *
+     * Returns null on a miss. A LOCKED arm is still returned (so the caller
+     * can say "it's locked" - see isArmLocked); dragging it simply does
+     * nothing. Never mutates any state - purely a query, safe to call on
+     * every click to decide whether a drag should start at all. */
+    public LeverArmGrab findLeverArmGrabPoint(Vector3f rayOrigin, Vector3f rayDir) {
+        if (!hasAnimatedInstances) return null;
+        Matrix4f[][] live = new Matrix4f[1][]; // resolved once, and only if something hidden is actually asked about
+        LeverArmSystem.Grab grab = arms.pick(i -> {
+            if (!isHiddenInstance(i)) return worldTransforms[i];
+            if (live[0] == null) live[0] = resolveLiveTransforms();
+            return live[0][i];
+        }, rayOrigin, rayDir);
+        return grab == null ? null : new LeverArmGrab(grab.owner(), grab.localPoint());
+    }
+
+    /** One frame's worth of drag update for a lever-arm instance already
+     * grabbed (see findLeverArmGrabPoint): finds the armValue whose
+     * resulting world transform would place localGrabPoint (captured once,
+     * at grab time, in that instance's own local space) closest to THIS
+     * frame's ray, and commits that value via setArmValue. Call once per
+     * frame for as long as the player holds the grab, with that frame's
+     * own current camera ray - the value is meant to track wherever the
+     * player is aiming continuously, not just where they started.
+     *
+     * The search itself (coarse sampling of 0..1, then a refinement, so
+     * the arm follows the aim smoothly rather than in 2.5 % steps, and
+     * lands exactly on an end when the aim is past it) is
+     * LeverArmSystem.dragToward; it works for any lever arm - pure
+     * rotation, pure position or both - without assuming a hinge axis.
+     * A hidden (voxel-destroyed) arm can still be dragged: the search uses
+     * the arm's parent's live transform, which the arm's own motion does
+     * not change. No physics behind it yet - the value is purely where the
+     * aim puts it.
+     *
+     * Returns the armValue it committed, or Double.NaN (nothing
+     * committed) if instanceId isn't a lever-arm instance or is locked. */
+    public double dragArmValueTowardRay(String instanceId, Vector3f localGrabPoint, Vector3f rayOrigin, Vector3f rayDir) {
+        int idx = indexOfInstance(instanceId);
+        if (idx < 0 || !arms.has(idx)) return Double.NaN;
+        int parent = scene.instances.get(idx).parentIndex;
+        Matrix4f parentWorld = parent < 0 ? new Matrix4f() : liveWorldOf(parent);
+        return arms.dragToward(idx, localGrabPoint, rayOrigin, rayDir, parentWorld);
     }
 
     /** Sets (not toggles) instance instanceId's own open/closed state
@@ -1022,32 +1100,127 @@ public final class PbdRenderer implements AutoCloseable {
      * whether a reported "nothing happens" bug is in the INPUT/raycast
      * layer or in whatever's supposed to happen once something IS
      * triggered: calling this directly skips the input layer entirely.
-     * Returns false (does nothing else) if instanceId doesn't exist or
-     * isn't keyframed at all (Double.isNaN(instanceAnimTime[idx])) -
-     * setting "open" on something with no animation to play wouldn't
-     * mean anything.
-     */
+     * Returns false (does nothing else) if instanceId doesn't exist, isn't
+     * animatable by either mechanism at all (!isAnimatable(idx)), or is a
+     * LOCKED lever arm (unlock it first - setArmLocked) - setting "open"
+     * on something with no animation to play, or that is bolted in place,
+     * wouldn't mean anything. Works for a lever-arm instance exactly like a
+     * keyframed one - the arm is handed a scripted target and
+     * updateAnimation eases it there afterward at the arm's own `speed`,
+     * playing its openSound/closeSound as it leaves/reaches the closed end. */
     public boolean setOpen(String instanceId, boolean open) {
-        int idx = -1;
-        for (int i = 0; i < scene.instances.size(); i++) {
-            if (scene.instances.get(i).id.equals(instanceId)) { idx = i; break; }
-        }
-        if (idx < 0 || Double.isNaN(instanceAnimTime[idx])) return false;
+        int idx = indexOfInstance(instanceId);
+        if (idx < 0 || !isAnimatable(idx)) return false;
 
+        boolean accepted = openOne(idx, open);
         String group = scene.instances.get(idx).params.get("linkGroup");
-        if (group == null) {
-            instanceOpen[idx] = open;
-            playSoundAtCurrentTime(idx);
-        } else {
+        if (group != null) {
             for (int i = 0; i < scene.instances.size(); i++) {
-                if (Double.isNaN(instanceAnimTime[i])) continue;
-                if (group.equals(scene.instances.get(i).params.get("linkGroup"))) {
-                    instanceOpen[i] = open;
-                    playSoundAtCurrentTime(i);
-                }
+                if (i == idx || !isAnimatable(i)) continue;
+                if (group.equals(scene.instances.get(i).params.get("linkGroup"))) openOne(i, open);
             }
         }
-        return true;
+        return accepted;
+    }
+
+    /** One instance's share of setOpen: a keyframed instance toggles and
+     * plays the sound of the keyframe it is leaving; a lever arm is given
+     * a scripted target (false if it is locked). Keyframes win for an
+     * instance that somehow has both, same as in HierarchyResolver. */
+    private boolean openOne(int i, boolean open) {
+        if (!Double.isNaN(instanceAnimTime[i])) {
+            instanceOpen[i] = open;
+            playSoundAtCurrentTime(i);
+            return true;
+        }
+        return arms.setTarget(i, open);
+    }
+
+    /** Directly sets instanceId's own lever-arm value to a specific point
+     * in [0,1] (clamped), bypassing updateAnimation's speed-based easing
+     * entirely from this call onward - the hook for anything that needs
+     * to drive a lever-arm CONTINUOUSLY from outside this class, frame by
+     * frame, rather than toggling it once and letting `speed` ease it to
+     * an end on its own: the mouse drag (dragArmValueTowardRay calls it
+     * every frame), or later a physics step. Once called, the value
+     * belongs to the caller and easing leaves it alone, until setOpen or
+     * releaseArm hands it back.
+     *
+     * Same linkGroup propagation as setOpen (every lever arm sharing this
+     * one's own linkGroup is set to the same value; a locked one stays
+     * put) - a dragged door with a synchronized twin drags both. A
+     * transition across the closed end still plays the arm's openSound /
+     * closeSound (updateAnimation notices it whoever moved the arm).
+     *
+     * Returns false (does nothing else) if instanceId doesn't exist, isn't
+     * a lever-arm instance (unlike setOpen this is NOT valid for a
+     * keyframed instance, which has no separate arm-value dimension) or is
+     * locked. */
+    public boolean setArmValue(String instanceId, double value) {
+        int idx = indexOfInstance(instanceId);
+        return idx >= 0 && arms.setValue(idx, value);
+    }
+
+    /** Reads instanceId's own current lever-arm value - whatever it is
+     * right now, however it got there (scripted easing, a drag or a
+     * setArmValue caller). This is the roadmap's long-flagged
+     * "getArmRotationValue" accessor, named ArmValue instead: the value
+     * isn't necessarily a pure rotation (openRot can be null, leaving only
+     * a position change - see PbdInstance.LeverArm), so "rotation" would
+     * be inaccurate for a sliding or combined arm. Returns Double.NaN if
+     * instanceId doesn't exist or isn't a lever-arm instance - callers that
+     * only care about open/closed as a simple yes/no should use
+     * isInstanceOpen/isInstanceFullyOpen/isInstanceFullyClosed instead;
+     * this is for a caller that genuinely needs the in-between, e.g. an AI
+     * deciding whether it can see/reach through a door that's only partly
+     * open. */
+    public double getArmValue(String instanceId) {
+        int idx = indexOfInstance(instanceId);
+        return idx < 0 ? Double.NaN : arms.value(idx); // NaN already for an instance with no arm
+    }
+
+    /** The player let go of a dragged arm: a `release=snap` arm (the
+     * default) swings on to whichever end it is nearer, a `release=free`
+     * one stays exactly where it was let go. Linked twins are released
+     * with it. Returns whether the arm went back to scripted easing. */
+    public boolean releaseArm(String instanceId) {
+        int idx = indexOfInstance(instanceId);
+        return idx >= 0 && arms.release(idx);
+    }
+
+    /** Whether instanceId is a lever arm that is locked in place (its file
+     * said locked=true, or setArmLocked locked it): no drag, no setOpen,
+     * no easing moves it. False for anything else, including an unknown id. */
+    public boolean isArmLocked(String instanceId) {
+        int idx = indexOfInstance(instanceId);
+        return idx >= 0 && arms.isLocked(idx);
+    }
+
+    /** Locks instanceId's arm where it stands, or unlocks it - an unlocked
+     * `snap` arm then settles at its nearer end, a `free` one stays put.
+     * The hook for a key, a script or a mod ("the door is locked until the
+     * player has the key"). False if instanceId isn't a lever arm. */
+    public boolean setArmLocked(String instanceId, boolean locked) {
+        int idx = indexOfInstance(instanceId);
+        return idx >= 0 && arms.setLocked(idx, locked);
+    }
+
+    private int indexOfInstance(String instanceId) {
+        for (int i = 0; i < scene.instances.size(); i++) {
+            if (scene.instances.get(i).id.equals(instanceId)) return i;
+        }
+        return -1;
+    }
+
+    private boolean isHiddenInstance(int index) {
+        return hiddenInstances != null && index >= 0 && index < hiddenInstances.length && hiddenInstances[index];
+    }
+
+    /** Instance i's world matrix as it really is right now: the one the
+     * renderer holds, or - for a hidden (voxel-destroyed) instance, whose
+     * own entry is zeroed - its live transform. */
+    private Matrix4f liveWorldOf(int i) {
+        return isHiddenInstance(i) ? resolveLiveTransforms()[i] : worldTransforms[i];
     }
 
     /** Plays instance i's sound field for whichever keyframe it's
@@ -1338,9 +1511,7 @@ public final class PbdRenderer implements AutoCloseable {
             // properties.py's own pbd_light_mode description), so
             // aiming a spot in the addon by rotating the Empty aims it
             // the same way here.
-            Vector3f spotDir = new Vector3f(0, 0, -1);
-            worldTransforms[idx].transformDirection(spotDir);
-            spotDir.normalize();
+            Vector3f spotDir = LightTracker.aim(worldTransforms[idx]); // the one definition of "aim", shared with the tracker that decides when to rebuild this buffer
             float spotCosAngle = isSpot && inst.lightSpotAngleDeg != null
                 ? (float) Math.cos(Math.toRadians(inst.lightSpotAngleDeg)) : -1f; // -1 = cos(180deg) = every direction passes, i.e. no cone restriction at all for a non-spot light
 
@@ -1355,6 +1526,8 @@ public final class PbdRenderer implements AutoCloseable {
         glBufferData(GL_SHADER_STORAGE_BUFFER, buf, GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BINDING_LIGHTS, lightBuffer);
         MemoryUtil.memFree(buf);
+        // From here on, "moved" means moved since THIS build (see updateAnimation).
+        lightTracker.remember(scene, worldTransforms);
     }
 
     /**
@@ -1468,6 +1641,300 @@ public final class PbdRenderer implements AutoCloseable {
         hiddenInstances[instanceIndex] = true;
         worldTransforms[instanceIndex] = new Matrix4f().scale(0f);
         uploadWorldTransforms(worldTransforms);
+    }
+
+    // ===================================================================
+    // Voxel destruction (G-key) facade - moved here from Main.java's own
+    // game loop, where this whole system (raycast, retarget, crater
+    // computation, per-voxel color, GPU renderer construction, and the
+    // state tracking + draw loop for the resulting debris) used to live
+    // inline. Explicitly, repeatedly requested: this logic has no
+    // business sitting in the game loop, it belongs BEHIND this facade,
+    // the same place setOpen/hideInstance/isContainerOpen and everything
+    // else destruction-adjacent already lives. Main.java's own G-key
+    // handler is now just: call destroyAt with the camera's ray, log the
+    // result's own message, play the SFX if result.hit(). Every voxel-
+    // destruction helper this project built up over several turns
+    // (applyCraterAdaptive's true anisotropic crater application,
+    // computeCraterRemovedSet's ray-cast crater, buildVoxelColorFn's
+    // texture-pixel sampling from voxelTexturePixels) moved here as
+    // private methods rather than being reimplemented - same logic,
+    // same fixes, new home.
+    // ===================================================================
+
+    /** hit: whether anything was actually destroyed/further-carved this
+     * call - the caller's own cue for whether to play the destruction
+     * SFX, without needing to know which of the several possible
+     * internal cases (first hit, follow-up hit, a falling piece hit
+     * again, fully consumed, nothing under the crosshair) it was.
+     * message: a ready-to-print, already-detailed log line - the same
+     * information this project's own console output already carried when
+     * this logic lived in Main.java, just returned instead of printed
+     * directly, so the caller decides whether/how to surface it. */
+    public record DestructionResult(boolean hit, String message) {}
+
+    /** Everything a G hit does that does not need a GPU - the crater, what
+     * stays attached, what breaks off and falls, the physics of the falling
+     * pieces - lives in pbd.voxel.DestructionWorld so it can be tested
+     * without a window (tools/regression/RegressionDestructionWorld). This
+     * class is its GL adapter: VoxelHost below builds/frees the meshes and
+     * says where instances are right now. Created lazily (it needs the
+     * uploaded scene), dropped by clearDestroyed(). */
+    private DestructionWorld<pbd.classicmesh.ClassicMeshRenderer> destruction;
+
+    private DestructionWorld<pbd.classicmesh.ClassicMeshRenderer> destruction() {
+        if (destruction == null) destruction = new DestructionWorld<>(scene.instances, new VoxelHost());
+        return destruction;
+    }
+
+    private final class VoxelHost implements DestructionWorld.Host<pbd.classicmesh.ClassicMeshRenderer> {
+        @Override public Matrix4f[] liveTransforms() { return resolveLiveTransforms(); }
+
+        @Override public boolean isHidden(int index) {
+            return hiddenInstances != null && index < hiddenInstances.length && hiddenInstances[index];
+        }
+
+        @Override public void hideInstance(int index) { PbdRenderer.this.hideInstance(index); }
+
+        @Override public DestructionWorld.Style styleFor(PbdInstance original, PbdInstance voxelized, int gridSize, float voxelWorldSize) {
+            var matFields = scene.materialOverrides.get(original.material);
+            float[] flatColor = {0.62f, 0.63f, 0.66f};
+            if (matFields != null && matFields.get("color") != null) {
+                float[] parsed = parseColorTriple(matFields.get("color"));
+                if (parsed != null) flatColor = parsed;
+            }
+            return new DestructionWorld.Style(buildVoxelColorFn(voxelized, matFields, flatColor, gridSize, voxelWorldSize), flatColor);
+        }
+
+        @Override public pbd.classicmesh.ClassicMeshRenderer buildMesh(List<int[]> entries, float voxelWorldSize, DestructionWorld.Style style) {
+            var colored = pbd.voxel.VoxelMeshBuilder.buildMeshWithColor(entries, voxelWorldSize, style.colorFn);
+            return buildVoxelMeshRenderer(colored.meshData, colored.colors, style.fallback);
+        }
+
+        @Override public void closeMesh(pbd.classicmesh.ClassicMeshRenderer mesh) { mesh.close(); }
+    }
+
+    /** The full G-key action: find what the ray hits first - a
+     * never-destroyed instance (the bounding-box test below, refined
+     * against its real voxels inside DestructionWorld), what is left of an
+     * already-destroyed one, or a piece that already broke off - carve a
+     * crater, and let whatever the crater leaves unattached fall (see
+     * updateDebris / drawDestroyed). */
+    public DestructionResult destroyAt(Vector3f rayOrigin, Vector3f rayDir) {
+        DestructionWorld.Fresh candidate = findFresh(rayOrigin, rayDir);
+        if (candidate != null) lastHitLocalPoint.set(candidate.localHit());
+        DestructionWorld.Outcome outcome = destruction().destroyAt(
+            new Vector3d(rayOrigin.x, rayOrigin.y, rayOrigin.z),
+            new Vector3d(rayDir.x, rayDir.y, rayDir.z), candidate);
+        return new DestructionResult(outcome.hit(), outcome.message());
+    }
+
+    /** Advances the pieces a G hit broke off (gravity, floor, landing on
+     * remains and nearby boxes). Call once per frame, after
+     * updateAnimation; free until something has broken off. */
+    public void updateDebris(double dt) {
+        if (destruction != null) destruction.update(dt);
+    }
+
+    /** Minimal GPU-renderer construction for a voxel-destruction result
+     * specifically - NOT Main.java's own general-purpose
+     * buildMeshRenderer (which also handles regular mesh instances and
+     * container items, texture/uvScale setup included): every voxel
+     * mesh carries real per-vertex colors (VoxelMeshBuilder's own
+     * ColoredMesh) and renders through ClassicMeshRenderer's own
+     * useVertexColor path, which the shader itself prioritizes over
+     * baseColor/texture entirely - so this needs none of that other
+     * setup, only the mesh itself plus a baseColor for consistency/
+     * fallback. Kept deliberately separate from buildMeshRenderer rather
+     * than sharing it across the Main/PbdRenderer boundary - that
+     * method's other 3 call sites (regular instance upload, LOD
+     * rebuild) are outside what was actually asked to move here, and
+     * pulling them in too would have expanded this refactor well past
+     * "the G-key logic" into unrelated code paths. */
+    private pbd.classicmesh.ClassicMeshRenderer buildVoxelMeshRenderer(pbd.format.PbdMeshData meshData, float[] colors, float[] baseColor) {
+        try {
+            pbd.classicmesh.ObjMesh objMesh = new pbd.classicmesh.ObjMesh(meshData.toPositionNormalUvInterleaved(), meshData.indices, true, colors);
+            pbd.classicmesh.ClassicMeshRenderer meshRenderer = new pbd.classicmesh.ClassicMeshRenderer(Path.of("src/main/resources/shaders/classic"), objMesh);
+            meshRenderer.baseColor = baseColor;
+            return meshRenderer;
+        } catch (java.io.IOException e) {
+            System.err.println("[Destroy] Failed to create voxel-debris renderer: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static float[] parseColorTriple(String raw) {
+        try {
+            String inner = raw.trim();
+            if (inner.startsWith("(")) inner = inner.substring(1, inner.length() - 1);
+            String[] parts = inner.split(",");
+            return new float[]{
+                Float.parseFloat(parts[0].trim()),
+                Float.parseFloat(parts[1].trim()),
+                Float.parseFloat(parts[2].trim())};
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Reads voxelTexturePixels (this class's own field, populated in
+     * upload() from MaterialTextureArray's own already-decoded pixel
+     * data - see that field's own doc for why this never calls
+     * STBImage itself, a real, repeatedly-crash-causing approach this
+     * project tried and moved away from). Per-object-extent box/
+     * triplanar mapping: normalizes a position against THIS object's
+     * own real per-axis extent (gvx/gvy/gvz, recomputed the same way
+     * PrimitiveVoxelizer itself derives them) rather than the shared
+     * octree grid's own span, which for a non-cubic object would
+     * compress almost the whole texture into a tiny sliver - verified
+     * directly against a thin door panel spanning the full 0..1 range
+     * on both axes.
+     *
+     * BiFunction, called once per VERTEX (worldPos - VoxelMeshBuilder's
+     * own addFace calls this per corner of every face, not once per
+     * region) rather than the single Function<int[],float[]> (once per
+     * REGION) this used to be - a real, confirmed, directly-reported
+     * bug: a merged region can be dozens of voxels across (most of a
+     * real object's own surface stays merged this large - see
+     * PrimitiveVoxelizer's own doc on why untouched interior regions
+     * aren't expanded), and sampling ONE color at that region's own
+     * corner, then flat-shading its whole box with it, discarded
+     * essentially all of the real texture's own detail across
+     * anything but the smallest, crater-adjacent pieces - visible
+     * directly as blocky, single-color patches/streaks where real
+     * texture variation should have been. worldPos is the SAME world-
+     * space coordinate system addBox already builds its box corners
+     * in (voxel-grid units times voxelWorldSize) - dividing back by
+     * voxelWorldSize here recovers grid-space, floating-point this
+     * time rather than one region's own integer corner, so each of a
+     * large region's 4 corners per face now samples a DIFFERENTLY
+     * positioned texel, and the GPU's own rasterizer interpolates
+     * smoothly between them across the face - not per-fragment GPU
+     * texture sampling (a real further improvement, not attempted
+     * here - see this method's own roadmap entry), but a genuine
+     * gradient instead of one flat color no matter how large the
+     * block. */
+    private java.util.function.BiFunction<int[], float[], float[]> buildVoxelColorFn(
+            PbdInstance inst, Map<String, String> matFields, float[] fallbackColor,
+            int gridSize, float voxelWorldSize) {
+        String texturePath = matFields != null ? matFields.get("texture") : null;
+        if (texturePath == null) return (voxel, worldPos) -> fallbackColor;
+
+        VoxelTexturePixels tex = voxelTexturePixelsFor(texturePath);
+        if (tex == null) {
+            System.out.println("[Destroy] No pre-decoded pixel data for texture '" + texturePath + "' - using flat color instead");
+            return (voxel, worldPos) -> fallbackColor;
+        }
+
+        int texW = tex.width(), texH = tex.height();
+        byte[] pixelBytes = tex.pixelBytes();
+        // taperMaxScale mirrors PrimitiveVoxelizer.voxelize()'s own
+        // identically-named local exactly (same loop, same formula) -
+        // gvx/gvz here have to agree with the REAL gridX/gridZ that
+        // method actually built the octree at, or every voxel's own
+        // nx/nz below is normalized against the wrong extent (visibly
+        // wrong for a widening taper specifically, since the grid
+        // there is now genuinely wider than a plain inst.scale.x/z
+        // recomputation accounts for - narrowing and identity tapers
+        // are unaffected, matching PrimitiveVoxelizer's own doc on why
+        // max(...,1f) never shrinks anything). Duplicated rather than
+        // read off a stored field because PrimitiveVoxelizer.Result
+        // does not currently expose its own gridX/gridY/gridZ, only
+        // the already-centered gridOriginLocal - re-deriving here is
+        // small and cheap, unlike carrying a wider result type through
+        // every caller.
+        float taperMaxScale = 1f;
+        for (pbd.format.PbdModifier mod : inst.modifiers) {
+            if ("taper".equals(mod.type)) {
+                float bottomScale = mod.getFloat("bottomScale", 1f);
+                float topScale = mod.getFloat("topScale", 1f);
+                taperMaxScale = Math.max(taperMaxScale, Math.max(Math.abs(bottomScale), Math.abs(topScale)));
+            }
+        }
+        int gvx = Math.max(1, Math.round(inst.scale.x * taperMaxScale / voxelWorldSize));
+        int gvy = Math.max(1, Math.round(inst.scale.y / voxelWorldSize));
+        int gvz = Math.max(1, Math.round(inst.scale.z * taperMaxScale / voxelWorldSize));
+        int foX = (gridSize - gvx) / 2, foY = (gridSize - gvy) / 2, foZ = (gridSize - gvz) / 2;
+        return (voxel, worldPos) -> {
+            float nx = (worldPos[0] / voxelWorldSize - foX) / (float) gvx;
+            float ny = (worldPos[1] / voxelWorldSize - foY) / (float) gvy;
+            float nz = (worldPos[2] / voxelWorldSize - foZ) / (float) gvz;
+            float dx = Math.abs(nx - 0.5f), dy = Math.abs(ny - 0.5f), dz = Math.abs(nz - 0.5f);
+            float u, v;
+            if (dx >= dy && dx >= dz) { u = nz; v = ny; }
+            else if (dy >= dx && dy >= dz) { u = nx; v = nz; }
+            else { u = nx; v = ny; }
+            int px = Math.floorMod((int) (u * texW), texW);
+            int py = Math.floorMod((int) (v * texH), texH);
+            int idx = (py * texW + px) * 4;
+            return new float[]{
+                (pixelBytes[idx] & 0xFF) / 255f,
+                (pixelBytes[idx + 1] & 0xFF) / 255f,
+                (pixelBytes[idx + 2] & 0xFF) / 255f
+            };
+        };
+    }
+
+    /** Draws every destroyed instance's own current voxel-debris mesh and
+     * every detached piece - called once per frame from Main.java's own
+     * render pass, the same place every other kind of geometry already
+     * gets drawn from. resolveLiveTransforms() is called ONCE per call
+     * (not once per destroyed entry - see that method's own doc on why it
+     * isn't cheap), and only when there are remains to place; a falling
+     * piece carries its own world transform. */
+    public void drawDestroyed(FlyCamera camera, float aspectRatio) {
+        if (destruction == null || destruction.isEmpty()) return;
+        var remains = destruction.remains();
+        if (!remains.isEmpty()) {
+            Matrix4f[] liveTransforms = resolveLiveTransforms();
+            for (var r : remains) {
+                Matrix4f liveWorld = liveTransforms[r.instanceIndex];
+                Matrix4f world = new Matrix4f()
+                    .translate(liveWorld.getTranslation(new Vector3f()))
+                    .rotate(extractRotationRobust(liveWorld))
+                    .translate(r.gridOrigin);
+                r.mesh().render(camera, aspectRatio, world);
+            }
+        }
+        for (var chunk : destruction.chunks()) {
+            var b = chunk.body;
+            // mesh space -> body space (centre of mass at the origin) -> world
+            Matrix4f world = new Matrix4f()
+                .translate((float) b.position.x, (float) b.position.y, (float) b.position.z)
+                .rotate(new Quaternionf((float) b.orientation.x, (float) b.orientation.y, (float) b.orientation.z, (float) b.orientation.w))
+                .translate((float) -b.comMesh.x, (float) -b.comMesh.y, (float) -b.comMesh.z);
+            chunk.mesh.render(camera, aspectRatio, world);
+        }
+    }
+
+    /** Whether anything is currently voxel-destroyed (remains or falling
+     * pieces). Not currently called from anywhere in this project -
+     * clearDestroyed() below is cheap enough (iterating empty
+     * collections) that Main.java's own scene-switch code just calls it
+     * unconditionally rather than gating it on this first. Kept as a
+     * small, genuinely useful piece of this facade's own public surface
+     * regardless (a HUD indicator, a "nothing to reset" early-out for
+     * some future caller), rather than removed for being momentarily
+     * unused. */
+    public boolean hasDestroyed() {
+        return destruction != null && !destruction.isEmpty();
+    }
+
+    /** Called on every scene switch (N/B), BEFORE this renderer's own
+     * upload() for the new scene - a confirmed real bug otherwise: an
+     * index destroyed in one scene stayed in these maps into the next,
+     * differently-sized one, an ArrayIndexOutOfBoundsException waiting
+     * to happen the next time the draw loop or a retarget indexed into
+     * the NEW scene's own arrays with a stale index from the old one.
+     * Each renderer properly closed first, not just dropped - the same
+     * GL-resource-leak reasoning as every removal/replacement in this
+     * whole system - including every falling piece's. The world is
+     * dropped too (it holds the previous scene's instance list). */
+    public void clearDestroyed() {
+        if (destruction != null) {
+            destruction.clear();
+            destruction = null;
+        }
     }
 
     public void render(FlyCamera camera, float aspectRatio) {
@@ -1622,6 +2089,7 @@ public final class PbdRenderer implements AutoCloseable {
 
     @Override
     public void close() {
+        clearDestroyed(); // voxel remains + falling pieces own GL meshes of their own
         glDeleteBuffers(instanceBuffer);
         glDeleteBuffers(patchBuffer);
         glDeleteBuffers(worldTransformBuffer);

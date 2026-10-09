@@ -40,6 +40,11 @@ public final class PrimitiveRegistry {
         return nameToId.containsKey(name);
     }
 
+    /** Every registered primitive name, in registration order - for a caller (or a test) that must cover each type that exists rather than a list somebody typed once. */
+    public java.util.List<String> names() {
+        return java.util.List.copyOf(nameToId.keySet());
+    }
+
     public int idOf(String name) {
         Integer id = nameToId.get(name);
         if (id == null) {

@@ -125,9 +125,12 @@ public final class PbdParser {
                 instance.modifiers.add(parseModifier());
             } else if (key.equals("keyframe")) {
                 instance.keyframes.add(parseKeyframe());
+            } else if (key.equals("leverArm")) {
+                instance.leverArm = parseLeverArm();
             } else {
                 expect('=');
-                applyInstanceField(instance, key, readRawValue());
+                boolean encoded = key.equals("vertexData") || VERTEX_DATA_LOD_KEY.matcher(key).matches();
+                applyInstanceField(instance, key, encoded ? readEncodedValue() : readRawValue());
             }
             skipWhitespaceAndComments();
         }
@@ -271,6 +274,85 @@ public final class PbdParser {
         }
         expect('}');
         return new PbdInstance.Keyframe(time, pos, rotDeg, sound, channel, scale);
+    }
+
+    /** Same block-parsing shape as parseKeyframe() just above - a fixed,
+     * known set of fields (unlike parseModifier()'s open-ended params
+     * bag, which fits a modifier type the parser doesn't otherwise know
+     * the shape of) - see PbdInstance.LeverArm for what each field
+     * means. speed defaults to 1.0 (unhurried but not sluggish - same
+     * "1.0 is the neutral rate" convention as PbdRenderer's own
+     * KEYFRAME_PLAYBACK_RATE) when omitted, and must be positive: zero
+     * or negative would stall or run the open/close motion backwards at
+     * the renderer's own easing step, which is a strange enough thing
+     * to author by accident that it's worth catching here instead of
+     * letting it silently misbehave at runtime. */
+    private PbdInstance.LeverArm parseLeverArm() {
+        expect('{');
+        Vector3f openPos = null;
+        Vector3f openRotDeg = null;
+        float speed = 1.0f;
+        PbdInstance.LeverArm.Release release = PbdInstance.LeverArm.Release.SNAP;
+        boolean locked = false;
+        float lockAt = 0f;
+        String openSound = null;
+        String closeSound = null;
+        skipWhitespaceAndComments();
+        while (peek() != '}') {
+            String key = readIdentifier();
+            expect('=');
+            String rawValue = readRawValue();
+            switch (key) {
+                case "openPos" -> openPos = parseVec3(rawValue);
+                case "openRot" -> openRotDeg = parseVec3(rawValue); // degrees, same convention as keyframe's own rot=
+                case "speed" -> {
+                    try {
+                        speed = Float.parseFloat(rawValue.trim());
+                    } catch (NumberFormatException e) {
+                        throw error("leverArm speed must be a number, got '" + rawValue + "'");
+                    }
+                }
+                // What letting go of a held arm does: snap = ease to the
+                // nearer end (what the engine always did, so the default),
+                // free = stay where it was left.
+                case "release" -> {
+                    release = PbdInstance.LeverArm.Release.fromKeyword(rawValue);
+                    if (release == null) {
+                        throw error("leverArm release must be 'snap' or 'free', got '" + rawValue + "'");
+                    }
+                }
+                // Starts locked (at lockAt, closed by default) until a
+                // script unlocks it - see PbdInstance.LeverArm.
+                case "locked" -> {
+                    String v = rawValue.trim();
+                    if (!v.equals("true") && !v.equals("false")) {
+                        throw error("leverArm locked must be 'true' or 'false', got '" + rawValue + "'");
+                    }
+                    locked = Boolean.parseBoolean(v);
+                }
+                case "lockAt" -> {
+                    try {
+                        lockAt = Float.parseFloat(rawValue.trim());
+                    } catch (NumberFormatException e) {
+                        throw error("leverArm lockAt must be a number, got '" + rawValue + "'");
+                    }
+                    if (!(lockAt >= 0f && lockAt <= 1f)) { // also rejects NaN
+                        throw error("leverArm lockAt must be between 0 (closed) and 1 (open), got " + rawValue);
+                    }
+                }
+                // Audio files, same convention (and same preloading in
+                // Main) as a keyframe's own sound=.
+                case "openSound" -> openSound = rawValue;
+                case "closeSound" -> closeSound = rawValue;
+                default -> throw error("Unknown leverArm field: '" + key + "'");
+            }
+            skipWhitespaceAndComments();
+        }
+        expect('}');
+        if (!(speed > 0f)) { // also rejects NaN
+            throw error("leverArm speed must be > 0, got " + speed);
+        }
+        return new PbdInstance.LeverArm(openPos, openRotDeg, speed, release, locked, lockAt, openSound, closeSound);
     }
 
     private PbdModifier parseModifier() {
@@ -519,24 +601,71 @@ public final class PbdParser {
             String subUrl = isRemote ? resolvedUrl : null;
             subScene = new PbdParser(primitiveRegistry, modifierRegistry)
                 .parseInternal(subText, subDir, subUrl, includeStack);
+            // A .pbdasset's materials live in a temp folder that is gone
+            // after this run - nothing a written file could point at.
+            if (!lowerResolved.endsWith(".pbdasset")) carryIncludes(scene, subScene, subDir, subUrl);
         } finally {
             includeStack.pop();
         }
 
         String prefix = refId + ".";
         for (PbdInstance sub : subScene.instances) {
-            PbdInstance copy = new PbdInstance(prefix + sub.id, sub.type);
-            copy.position.set(sub.position);
-            copy.rotation.set(sub.rotation);
-            copy.scale.set(sub.scale);
-            copy.material = matOverride != null ? matOverride : sub.material;
-            copy.modifiers.addAll(sub.modifiers);
-            copy.params.putAll(sub.params);
+            // copyAs carries EVERY field (keyframes, leverArm, light
+            // settings, indestructible, meshes, ...) - this loop used to
+            // copy a hand-picked subset and silently dropped the rest, so
+            // an included cabinet lost its door animation and its lamp's
+            // settings. Only what depends on the new namespace is
+            // adjusted here.
+            PbdInstance copy = sub.copyAs(prefix + sub.id);
+            if (matOverride != null) copy.material = matOverride;
             copy.parentId = (sub.parentId == null) ? refId : prefix + sub.parentId;
+            // Every id inside the referenced file now carries the prefix,
+            // so every id-valued reference to one must too: a container's
+            // door list...
+            copy.containerTriggers.replaceAll(trigger -> prefix + trigger);
+            // ...and a linkGroup name - a group is "these doors move
+            // together", and two placements of the same asset must not be
+            // wired to each other (before this, opening one wardrobe
+            // opened every other copy of it in the scene).
+            String linkGroup = copy.params.get("linkGroup");
+            if (linkGroup != null) copy.params.put("linkGroup", prefix + linkGroup);
             scene.addInstance(copy);
         }
         scene.curves.putAll(subScene.curves); // see the "known limitation" note above
         scene.materialOverrides.putAll(subScene.materialOverrides);
+    }
+
+    /**
+     * The referenced file's own include_material lines, as THIS scene would
+     * write them. The materials themselves are already merged in
+     * (materialOverrides), so a scene opened as parsed renders right; but a
+     * scene that is written back - .pbdbin, minify, a .pbdasset - is
+     * rebuilt from the instances plus its include list, and the referenced
+     * file's include was in nobody's list: the converted file kept
+     * `mat = cabinetwood` and lost the definition, and the cabinet came out
+     * grey. A path is rebased from the referenced file's folder to this
+     * file's folder (a URL stays a URL, a relative one on a fetched file
+     * becomes an absolute URL).
+     */
+    private void carryIncludes(PbdScene scene, PbdScene subScene, Path subDir, String subUrl) {
+        for (String include : subScene.includeMaterialPaths) {
+            String carried;
+            if (isUrl(include)) {
+                carried = include;
+            } else if (subUrl != null) {
+                carried = java.net.URI.create(subUrl).resolve(include).toString();
+            } else if (subDir != null && baseDir != null) {
+                Path absolute = subDir.resolve(include).toAbsolutePath().normalize();
+                try {
+                    carried = baseDir.toAbsolutePath().normalize().relativize(absolute).toString().replace('\\', '/');
+                } catch (IllegalArgumentException differentRoots) {
+                    carried = absolute.toString().replace('\\', '/');
+                }
+            } else {
+                continue; // no folder to rebase from or to: nothing a written file could say
+            }
+            scene.addIncludeMaterialPath(carried);
+        }
     }
 
     private void parseIncludeMaterial(PbdScene scene) {
@@ -622,7 +751,7 @@ public final class PbdParser {
                 }
             }
             scene.materialOverrides.putAll(loaded); // last include wins on a name collision
-            scene.includeMaterialPath = rawPath; // as-written, still relative - see the field's own doc for why this isn't resolved further here
+            scene.addIncludeMaterialPath(rawPath); // as-written, still relative (see includeMaterialPath's own doc for why it isn't resolved further) - and kept in the list of EVERY include, not just the last
         } catch (IOException e) {
             throw error("include_material could not read '" + resolved + "': " + e.getMessage());
         }
@@ -683,6 +812,23 @@ public final class PbdParser {
         } else {
             while (!atEnd() && !isStructural(peek()) && !Character.isWhitespace(peek())) pos++;
         }
+        return src.substring(start, pos).trim();
+    }
+
+    /** The value of vertexData / vertexDataLod&lt;N&gt;: base64, whose
+     * alphabet includes '=' (the padding) - which readRawValue counts as
+     * structural, so an UNQUOTED value used to stop at the first '=' and
+     * the rest of the file failed to parse ("Expected an identifier").
+     * Every writer here quotes these values; files written by hand or by
+     * older tools (the project's own mushroom.pbd) did not, and the
+     * Blender add-on's reader has always accepted them. A quoted value is
+     * read exactly as before; a bare one runs to the next whitespace or to
+     * the block's closing brace (neither is in the base64 alphabet). */
+    private String readEncodedValue() {
+        skipWhitespaceAndComments();
+        if (peek() == '"') return readRawValue();
+        int start = pos;
+        while (!atEnd() && !Character.isWhitespace(peek()) && peek() != '}') pos++;
         return src.substring(start, pos).trim();
     }
 

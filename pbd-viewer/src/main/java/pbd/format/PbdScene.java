@@ -34,6 +34,31 @@ public final class PbdScene {
     // class has no way to know at parse time - only the writer does.
     public String includeMaterialPath;
 
+    /**
+     * EVERY include_material path the file lists, in file order, as written
+     * (a file may list several: the Blender add-on writes one per embedded
+     * asset that brought its own materials, and a hand-written scene may
+     * split its materials over several files). includeMaterialPath above is
+     * only the LAST of them, kept for callers written before this list
+     * existed; anything that writes a scene back (PbdSerializer, so .pbdbin
+     * and minify, and PbdConvertMain's .pbdasset bundling) must use this
+     * list, or every include but the last silently disappears from the
+     * converted file and its materials fall back to grey.
+     */
+    public final List<String> includeMaterialPaths = new ArrayList<>();
+
+    /**
+     * Records one include_material path: appended to includeMaterialPaths
+     * unless the scene already lists it, and includeMaterialPath is kept as
+     * the list's last entry (what it always meant: "the last include").
+     * The parser calls this for the file's own include lines and for the
+     * ones it carries up from a pbd_ref'd file.
+     */
+    public void addIncludeMaterialPath(String path) {
+        if (!includeMaterialPaths.contains(path)) includeMaterialPaths.add(path);
+        includeMaterialPath = includeMaterialPaths.get(includeMaterialPaths.size() - 1);
+    }
+
     public final List<PbdInstance> instances = new ArrayList<>();
     public final Map<String, PbdCurve> curves = new LinkedHashMap<>();
 
@@ -56,6 +81,28 @@ public final class PbdScene {
 
     public void addCurve(PbdCurve curve) {
         curves.put(curve.id, curve);
+    }
+
+    /**
+     * Every distinct sound file this scene can play on its own - the
+     * `sound=` of each keyframe plus each lever arm's openSound and
+     * closeSound - in first-use order. What a viewer decodes up front
+     * (SoundPlayer.preload) so the first door that needs a sound does not
+     * stall a frame decoding it. Read live from the instances, so a scene
+     * loaded on the fly gets its own list with nothing cached in between.
+     */
+    public Set<String> soundFiles() {
+        Set<String> files = new java.util.LinkedHashSet<>();
+        for (PbdInstance inst : instances) {
+            for (PbdInstance.Keyframe kf : inst.keyframes) {
+                if (kf.sound != null) files.add(kf.sound);
+            }
+            if (inst.leverArm != null) {
+                if (inst.leverArm.openSound != null) files.add(inst.leverArm.openSound);
+                if (inst.leverArm.closeSound != null) files.add(inst.leverArm.closeSound);
+            }
+        }
+        return files;
     }
 
     /**

@@ -92,45 +92,14 @@ public final class Main {
     private static int hidingMetaIndex = -1;
     // Voxel-destruction state (see handleDestroyKey below and
     // pbd.voxel.{VoxelOctree,PrimitiveVoxelizer,VoxelMeshBuilder}) -
-    // maps an ORIGINAL instance index to the ClassicMeshRenderer
-    // drawing its voxelized replacement, once destroyed. The original
-    // itself gets hidden (see PbdRenderer.hideInstance) rather than
-    // removed from the scene's own instance list - simpler than
-    // renumbering every OTHER index that would shift if an entry were
-    // actually deleted.
-    private static final java.util.Map<Integer, ClassicMeshRenderer> destroyedRenderers = new java.util.HashMap<>();
-    // gridOriginLocal per destroyed instance (see PrimitiveVoxelizer.
-    // Result's own doc) - needed every frame to place that instance's
-    // voxel mesh correctly, alongside its ORIGINAL position/rotation
-    // (which destroyedRenderers' own key, the original instance index,
-    // still gives access to via scene.instances).
-    /** gridOrigin: the voxel grid's own local offset within the
-     * instance's local space - fixed at destruction time, doesn't
-     * change afterward. No longer stores a captured world transform
-     * (an earlier version of this fix did - see
-     * PbdRenderer.resolveLiveTransforms's own doc for why that broke
-     * "the debris should keep following its door's animation"): the
-     * draw loop below calls resolveLiveTransforms() fresh every frame
-     * instead, so this only needs to remember which grid this
-     * placement belongs to. survivingEntries/voxelWorldSize/gridSize:
-     * kept (not discarded once the mesh is built) so a SECOND hit on
-     * the same debris can carve a NEW crater out of what's actually
-     * left, rather than either doing nothing (the previous, reported
-     * behavior) or re-voxelizing the ORIGINAL primitive from scratch
-     * (which would undo the first hit's own damage). */
-    private static final class DestroyedPlacement {
-        final org.joml.Vector3f gridOrigin;
-        java.util.List<int[]> survivingEntries;
-        final float voxelWorldSize;
-        final int gridSize;
-        DestroyedPlacement(org.joml.Vector3f gridOrigin, java.util.List<int[]> survivingEntries, float voxelWorldSize, int gridSize) {
-            this.gridOrigin = gridOrigin;
-            this.survivingEntries = survivingEntries;
-            this.voxelWorldSize = voxelWorldSize;
-            this.gridSize = gridSize;
-        }
-    }
-    private static final java.util.Map<Integer, DestroyedPlacement> destroyedGridOrigins = new java.util.HashMap<>();
+    // Voxel-destruction state (which instance is destroyed, its voxel
+    // grid placement, the GPU renderer for its debris) and the whole
+    // G-key raycast/crater/color pipeline that populates it now live
+    // behind PbdRenderer's own facade (destroyAt/drawDestroyed/
+    // clearDestroyed/hasDestroyed) - moved there from here, along with
+    // DestroyedPlacement, applyCraterAdaptive, computeCraterRemovedSet,
+    // buildVoxelColorFn and this file's own copy of
+    // extractRotationRobust (PbdRenderer already had one).
     private static float hideTransitionT = 1f; // 0=just started, 1=transition complete (camera fully at rest at its current target)
     private static final float HIDE_TRANSITION_SECONDS = 0.6f;
     private static Vector3f hideStartPos, hideTargetPos;
@@ -158,8 +127,13 @@ public final class Main {
      * scene-cycling re-enters that method for a new scene, and a
      * PREVIOUS scene's own opened containers have no meaning once
      * everything they refer to (scene.instances, worldTransforms, ...)
-     * has been replaced. */
-    private static final java.util.Map<java.util.List<Integer>, pbd.pz.ContainerContents> containerContents = new java.util.HashMap<>();
+     * has been replaced.
+     *
+     * Which groups are open, and what is remembered about the shut ones
+     * (their contents are shelved, not thrown away, so what the player
+     * took stays gone - see pbd.pz.ContainerStock), is that class's job;
+     * the frame loop below only feeds it the doors' state. */
+    private static final pbd.pz.ContainerStock<pbd.pz.ContainerContents> containerContents = new pbd.pz.ContainerStock<>();
 
     /** Every currently-loaded item across every open container, right
      * now - the "getter" half of the requested container facade.
@@ -171,7 +145,7 @@ public final class Main {
      * cached/stale value: a container's own box can move). */
     public static java.util.List<ContainerItemInfo> getContainerItems() {
         java.util.List<ContainerItemInfo> result = new java.util.ArrayList<>();
-        for (pbd.pz.ContainerContents contents : containerContents.values()) {
+        for (pbd.pz.ContainerContents contents : containerContents.openContents()) {
             for (pbd.pz.ContainerContents.PlacedItem item : contents.items) {
                 result.add(new ContainerItemInfo(item.sourceFile, item.currentX, item.currentY, item.currentZ,
                     item.bounds.width, item.bounds.height, item.bounds.depth, contents));
@@ -237,6 +211,43 @@ public final class Main {
         return availableVolume(containerInstanceName) >= playerHitboxVolume;
     }
 
+    /** The renderer of the scene being shown right now (null when no scene
+     * is up) - the lever-arm facade below needs the live arm state, which
+     * lives there, the same way availableVolume/canHide above need
+     * currentScene. Set once per scene load, cleared when the viewer
+     * window closes (a N/B scene switch sets it again for the new scene). */
+    private static volatile PbdRenderer currentRenderer;
+
+    /** For AI / modding code: how open the door-like arm `instanceId` is
+     * RIGHT NOW, continuously - 0 = closed, 1 = fully open, 0.3 = ajar,
+     * whoever moved it (a mouse drag, a script, easing). This is the lever-arm
+     * specification's "getArmRotationValue", named ArmValue because a
+     * sliding drawer has no rotation to report. A zombie deciding whether it
+     * can see through a door reads this instead of a yes/no. NaN when no
+     * scene is loaded, the id is unknown, or the instance has no lever arm.
+     * (A plain open/closed question is PbdRenderer.isInstanceOpen /
+     * isInstanceFullyOpen / isInstanceFullyClosed.) */
+    public static double getArmValue(String instanceId) {
+        PbdRenderer r = currentRenderer;
+        return r == null ? Double.NaN : r.getArmValue(instanceId);
+    }
+
+    /** Whether `instanceId` is a lever arm bolted in place (locked=true in
+     * the file, or setArmLocked): no drag, script or easing moves it. False
+     * for an unknown id, no arm, or no scene. */
+    public static boolean isArmLocked(String instanceId) {
+        PbdRenderer r = currentRenderer;
+        return r != null && r.isArmLocked(instanceId);
+    }
+
+    /** Locks `instanceId`'s arm where it stands, or unlocks it ("the door
+     * stays locked until the player has the key"). False when there is no
+     * scene or the instance is not a lever arm. */
+    public static boolean setArmLocked(String instanceId, boolean locked) {
+        PbdRenderer r = currentRenderer;
+        return r != null && r.setArmLocked(instanceId, locked);
+    }
+
     /** Small helper so availableVolume above doesn't need its own
      * separate way to reach "the currently loaded scene's own
      * instances" - reuses whatever runPbdViewer's own local `scene`
@@ -265,7 +276,7 @@ public final class Main {
      * CONTAINER REMOVAL ITSELF works, independent of whether the
      * raycast that's SUPPOSED to trigger it does. */
     public static boolean removeContainerItem(String sourceFile) {
-        for (pbd.pz.ContainerContents contents : containerContents.values()) {
+        for (pbd.pz.ContainerContents contents : containerContents.openContents()) {
             for (var it = contents.items.iterator(); it.hasNext(); ) {
                 pbd.pz.ContainerContents.PlacedItem item = it.next();
                 if (item.sourceFile.equals(sourceFile)) {
@@ -279,6 +290,17 @@ public final class Main {
 
     private static boolean mouseClicked = false;   // edge-detected in the main loop, same idea as justPressed for keys
     private static boolean leftMouseDown = false;
+
+    // Drag-and-drop state for a lever-arm door currently being held (see
+    // the left-click handling in the main loop below, and
+    // PbdRenderer.findLeverArmGrabPoint/dragArmValueTowardRay/setArmValue).
+    // -1/null = not currently dragging anything. Unlike keyframe playback
+    // state (per-instance, lives in PbdRenderer, see the comment just
+    // below), this is UI/input state about what THIS PLAYER is currently
+    // holding onto, so it belongs here with the other input state
+    // (mouseClicked/leftMouseDown), not inside PbdRenderer.
+    private static int draggedLeverArmIndex = -1;
+    private static Vector3f draggedLeverArmLocalPoint = null;
 
     // In-scene time, controlled by the arrow keys (see the loop below).
     // Day 190 = July 9, Project Zomboid's default start date; hour starts
@@ -371,6 +393,7 @@ public final class Main {
 
             renderer.upload(scene, primitiveRegistry, modifierRegistry, materialRegistry);
             currentScene = scene; // see this field's own doc - availableVolume/canHide (the runtime facade) need somewhere to read "the scene right now" from
+            currentRenderer = renderer; // likewise getArmValue/isArmLocked/setArmLocked (the lever-arm part of the facade)
             // Prints ONCE per scene load, unconditionally - the single
             // most useful line if E/G/H logging is reported as never
             // appearing at all: if this ALSO doesn't show up, the
@@ -384,17 +407,23 @@ public final class Main {
             applyLodPreset(renderer);
             pbd.audio.SoundPlayer soundPlayer = new pbd.audio.SoundPlayer(Path.of("src/main/resources/sounds"));
             renderer.soundPlayer = soundPlayer;
-            // Every distinct sound any keyframe references, decoded once
-            // right here rather than lazily on whatever click first
-            // needs each one - see SoundPlayer.preload's own doc for
-            // why the lazy version caused a real, measured mistiming
-            // ("not quite locked to the first frame").
-            java.util.Set<String> soundsToPreload = new java.util.LinkedHashSet<>();
-            for (pbd.format.PbdInstance inst : scene.instances) {
-                for (pbd.format.PbdInstance.Keyframe kf : inst.keyframes) {
-                    if (kf.sound != null) soundsToPreload.add(kf.sound);
-                }
-            }
+            // Every distinct sound the scene can play by itself - each
+            // keyframe's sound= and each lever arm's openSound/closeSound
+            // (PbdScene.soundFiles) - decoded once right here rather than
+            // lazily on whatever click first needs each one - see
+            // SoundPlayer.preload's own doc for why the lazy version caused
+            // a real, measured mistiming ("not quite locked to the first
+            // frame").
+            java.util.Set<String> soundsToPreload = new java.util.LinkedHashSet<>(scene.soundFiles());
+            // Fixed SFX triggered directly by a key handler below (G's
+            // "doomshotgun.wav", E's "pickup.wav") aren't authored on any
+            // keyframe, so the loop above never finds them - left out
+            // here, each would hit the exact same lazy-decode mistiming
+            // ("not quite locked to the first frame", see
+            // SoundPlayer.preload's own doc) on its first key press
+            // instead of its first keyframe crossing.
+            soundsToPreload.add("doomshotgun.wav");
+            soundsToPreload.add("pickup.wav");
             for (String soundFile : soundsToPreload) soundPlayer.preload(soundFile);
 
             // Generic named-channel system (see pbd.render.ChannelTracker)
@@ -491,9 +520,20 @@ public final class Main {
             // first (same GL-resource-leak reasoning as every other
             // removal/replacement this session) rather than just
             // dropped.
-            for (ClassicMeshRenderer r : destroyedRenderers.values()) r.close();
-            destroyedRenderers.clear();
-            destroyedGridOrigins.clear();
+            renderer.clearDestroyed();
+            // Same stale-index risk the comment just above describes,
+            // same fix: a drag started in the PREVIOUS scene left a raw
+            // instance index sitting in draggedLeverArmIndex, which the
+            // main loop below indexes scene.instances with every frame
+            // one is in progress - after N/B cycles to a NEW scene with
+            // fewer instances (or none), that's the exact same
+            // ArrayIndexOutOfBoundsException waiting to happen, just for
+            // a drag instead of a destroyed-instance lookup. Resetting
+            // here means letting go of whatever was being dragged,
+            // which is the only sane thing to do anyway once its own
+            // scene is gone.
+            draggedLeverArmIndex = -1;
+            draggedLeverArmLocalPoint = null;
             java.util.Map<pbd.pz.ContainerContents.PlacedItem, ClassicMeshRenderer> itemRenderers = new java.util.HashMap<>();
 
             FlyCamera camera = new FlyCamera();
@@ -600,11 +640,56 @@ public final class Main {
 
                 // Cursor is locked to center (see InputState's
                 // GLFW_CURSOR_DISABLED, needed for fly-camera look), so a
-                // click naturally means "whatever's under the crosshair
-                // at screen center" - a straight-forward ray from the
-                // camera, not an arbitrary mouse position.
+                // click/hold naturally means "whatever's under the
+                // crosshair at screen center" - a straight-forward ray
+                // from the camera, not an arbitrary mouse position.
+                //
+                // What the button-down moment hits decides which of two
+                // very different things happens next:
+                // - A keyframed instance: unchanged from before - one
+                //   click toggles it, and toggleKeyframedInstanceAlongRay
+                //   (keyframe-only now - see its own doc) plays the usual
+                //   scripted swing.
+                // - A lever-arm instance: grabbed instead of toggled. No
+                //   scripted swing plays on click at all - the arm value
+                //   only ever goes where the player's own aim puts it,
+                //   for as long as the button stays down (see the drag
+                //   update just below), which is the whole point of this
+                //   mechanism over a keyframed door's fixed animation.
                 if (consumeClick()) {
-                    renderer.toggleKeyframedInstanceAlongRay(camera.position, camera.forward());
+                    var grab = renderer.findLeverArmGrabPoint(camera.position, camera.forward());
+                    if (grab != null) {
+                        // grab.instanceIndex() is the ARM that moves - the
+                        // pivot, when the click landed on a handle or a
+                        // panel hanging on it - not necessarily the
+                        // primitive under the crosshair.
+                        String grabbedId = scene.instances.get(grab.instanceIndex()).id;
+                        if (renderer.isArmLocked(grabbedId)) {
+                            System.out.println("[Lever] '" + grabbedId + "' is locked");
+                        } else {
+                            draggedLeverArmIndex = grab.instanceIndex();
+                            draggedLeverArmLocalPoint = grab.localPoint();
+                        }
+                    } else {
+                        renderer.toggleKeyframedInstanceAlongRay(camera.position, camera.forward());
+                    }
+                }
+                // Continues every frame the button stays down (not just
+                // on the press edge above) - a drag needs to track the
+                // crosshair continuously, unlike a click's one-shot
+                // toggle. On release the arm's own release= policy decides
+                // (releaseArm): `snap` (the default) hands it to the
+                // scripted easing, toward whichever end is now closer;
+                // `free` leaves it exactly where it was let go.
+                if (draggedLeverArmIndex >= 0) {
+                    String draggedId = scene.instances.get(draggedLeverArmIndex).id;
+                    if (leftMouseDown) {
+                        renderer.dragArmValueTowardRay(draggedId, draggedLeverArmLocalPoint, camera.position, camera.forward());
+                    } else {
+                        renderer.releaseArm(draggedId);
+                        draggedLeverArmIndex = -1;
+                        draggedLeverArmLocalPoint = null;
+                    }
                 }
 
                 // Advances every keyframed instance toward its own
@@ -612,6 +697,7 @@ public final class Main {
                 // above, triggered by a mouse click) - a no-op for a
                 // scene with no animated instances at all.
                 renderer.updateAnimation(dt);
+                renderer.updateDebris(dt); // pieces a G hit broke off fall and settle; a no-op until one has
                 channelTracker.update(dt); // advances any channel with a registered Rule (real-time-rate based) - humidity itself is set directly above, not via a Rule, but this keeps the mechanism ready for a future channel that DOES want a fixed real-time rate
                 if (renderer.hasChannelDrivenInstances()) renderer.updateChannelDrivenInstances(channelTracker);
 
@@ -653,61 +739,25 @@ public final class Main {
                     entry.getValue().render(camera, (float) width / height, world);
                 }
 
-                // Voxel-destroyed instances: the ORIGINAL is hidden (see
-                // hideInstance, called when 'G' destroyed it), its voxel
-                // mesh renders here instead. translate+rotateZYX+translate,
-                // NOT instanceWorldMatrix's own full transform - the mesh
-                // is already in world-SCALE units (see VoxelMeshBuilder),
-                // so re-applying the instance's own scale here would
-                // double it. Z,Y,X rotation order matches every other
-                // rotation build in this codebase (see PbdRenderer's own
-                // pose-interpolation code) - and this exact transform
-                // (position + that rotation order + gridOriginLocal) was
-                // verified against a real placement test before being
-                // wired in here, not just derived on paper.
-                // is already in world-SCALE units (see VoxelMeshBuilder),
-                // so re-applying the live transform's own scale here
-                // would double it - extractRotationRobust (below) gets
-                // JUST the rotation, discarding scale, WITHOUT the bug
-                // JOML's own getNormalizedRotation() turned out to have:
-                // confirmed, via a direct numeric test against this
-                // exact file's own cube.018 (scale 0.02/0.304/0.544 - a
-                // 27:1 ratio between its smallest and largest axis),
-                // that getNormalizedRotation() on a matrix with THIS
-                // degree of non-uniform scale returns something that
-                // isn't even a valid unit quaternion (x^2+y^2+z^2+w^2
-                // came out to ~0.43, not 1) - producing a visibly wrong
-                // rotation for every voxel-destroyed instance with
-                // strongly non-uniform scale, which describes most of
-                // this project's own thin door/panel assets. This is
-                // the actual, confirmed cause of a real reported
-                // "rotations and scales are wrong" bug - not a
-                // hypothesis, a reproduced and fixed one.
-                // resolveLiveTransforms() called ONCE per frame here (not
-                // once per destroyed entry - see that method's own doc on
-                // why it isn't cheap), only when there's actually
-                // something destroyed to draw.
-                if (!destroyedRenderers.isEmpty()) {
-                    Matrix4f[] liveTransforms = renderer.resolveLiveTransforms();
-                    for (var entry : destroyedRenderers.entrySet()) {
-                        DestroyedPlacement placement = destroyedGridOrigins.get(entry.getKey());
-                        Matrix4f liveWorld = liveTransforms[entry.getKey()];
-                        Matrix4f world = new Matrix4f()
-                            .translate(liveWorld.getTranslation(new Vector3f()))
-                            .rotate(extractRotationRobust(liveWorld))
-                            .translate(placement.gridOrigin);
-                        entry.getValue().render(camera, (float) width / height, world);
-                    }
-                }
+                // Everything a G hit leaves behind - the hidden original, the
+                // voxel remains that replace it and the falling pieces - is
+                // owned and drawn by the renderer (it used to live here; the
+                // placement maths, including the rotation extraction that
+                // survives a 27:1 non-uniform scale, moved with it). See
+                // PbdRenderer.drawDestroyed and pbd.voxel.DestructionWorld.
+                renderer.drawDestroyed(camera, (float) width / height);
 
                 // Bin-packed container contents (see pbd.pz.ContainerContents
-                // and pbd.pz.BinPacker) - lazily computed and cached per
-                // GROUP of boxes sharing a door set, per this project's
-                // own rule: no computation or display before at least one
-                // linked door is open.
+                // and pbd.pz.BinPacker) - lazily computed per GROUP of boxes
+                // sharing a door set, per this project's own rule: no
+                // computation or display before at least one linked door is
+                // open. What is out, and what is kept on the shelf while the
+                // doors are shut, is pbd.pz.ContainerStock's decision (tested
+                // without a window by RegressionContainerStock); this loop
+                // only tells it what the doors are doing and reacts.
                 for (java.util.List<Integer> group : containerGroups) {
                     boolean anyOpen = group.stream().anyMatch(idx -> renderer.isContainerOpen(idx));
-                    if (anyOpen && !containerContents.containsKey(group)) {
+                    var outcome = containerContents.step(group, anyOpen, () -> group.stream().allMatch(idx -> renderer.areAllDoorsClosed(idx)), () -> {
                         java.util.List<pbd.pz.BinPacker.ContainerVolume> volumes = new java.util.ArrayList<>();
                         for (int idx : group) {
                             Vector3f size = renderer.instanceWorldSize(idx);
@@ -722,30 +772,54 @@ public final class Main {
                         // own doc comment for the full reasoning).
                         java.util.List<String> ids = group.stream().map(idx -> scene.instances.get(idx).id).sorted().toList();
                         long seed = sessionSeed ^ String.join("|", ids).hashCode();
-                        pbd.pz.ContainerContents contents = pbd.pz.ContainerContents.loadRandom(
-                            pbd.pz.PbdPaths.FBX_DIR, 50, group, volumes, seed);
-                        containerContents.put(group, contents);
-                        System.out.println("[Container] Loaded " + contents.items.size()
-                            + " item(s) across " + group.size() + " box(es): " + ids);
-                    } else if (!anyOpen && containerContents.containsKey(group)
-                               && group.stream().allMatch(idx -> renderer.areAllDoorsClosed(idx))) {
-                        // All linked doors now closed - evict so the next
-                        // open recomputes fresh (same deterministic seed,
-                        // same items reappear) instead of what was shown
-                        // once staying rendered forever. Also releases the
-                        // per-item GL renderers (VBO/VAO), or they'd leak
-                        // across every future open/close cycle.
-                        pbd.pz.ContainerContents evicted = containerContents.remove(group);
-                        for (pbd.pz.ContainerContents.PlacedItem item : evicted.items) {
-                            ClassicMeshRenderer r = itemRenderers.remove(item);
-                            if (r != null) r.close();
+                        return pbd.pz.ContainerContents.loadRandom(pbd.pz.PbdPaths.FBX_DIR, 50, group, volumes, seed);
+                    });
+                    switch (outcome.change()) {
+                        case LOADED -> System.out.println("[Container] Loaded " + outcome.contents().items.size()
+                            + " item(s) across " + group.size() + " box(es): "
+                            + group.stream().map(idx -> scene.instances.get(idx).id).sorted().toList());
+                        case REOPENED -> System.out.println("[Container] Reopened - " + outcome.contents().items.size()
+                            + " item(s) still inside, across " + group.size() + " box(es) (nothing is rolled again)");
+                        case SHELVED -> {
+                            // All linked doors now closed - the contents go
+                            // on the shelf (what the player took stays
+                            // gone when the door opens again), and the
+                            // per-item GL renderers (VBO/VAO) are released
+                            // now, or they'd pile up across every open/close
+                            // cycle; they are made again, lazily, below.
+                            for (pbd.pz.ContainerContents.PlacedItem item : outcome.contents().items) {
+                                ClassicMeshRenderer r = itemRenderers.remove(item);
+                                if (r != null) r.close();
+                            }
+                            System.out.println("[Container] Closed - shelved " + outcome.contents().items.size()
+                                + " item(s) across " + group.size() + " box(es)");
                         }
-                        System.out.println("[Container] Closed - cleared " + evicted.items.size()
-                            + " item(s) across " + group.size() + " box(es)");
+                        case NONE -> { }
                     }
                 }
 
-                for (var entry : containerContents.entrySet()) {
+                // A renderer outlives its item when the item is taken out of
+                // an open container (E, or the removeContainerItem facade): the
+                // item is no longer drawn and nothing else would ever close
+                // its renderer, since a shelved group only releases the
+                // renderers of the items still inside. The size comparison
+                // keeps the common frame free of any scan.
+                int itemsOut = 0;
+                for (pbd.pz.ContainerContents out : containerContents.openContents()) itemsOut += out.items.size();
+                if (itemRenderers.size() > itemsOut) {
+                    java.util.Set<pbd.pz.ContainerContents.PlacedItem> stillOut =
+                        java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+                    for (pbd.pz.ContainerContents out : containerContents.openContents()) stillOut.addAll(out.items);
+                    for (var it = itemRenderers.entrySet().iterator(); it.hasNext(); ) {
+                        var e = it.next();
+                        if (!stillOut.contains(e.getKey())) {
+                            e.getValue().close();
+                            it.remove();
+                        }
+                    }
+                }
+
+                for (var entry : containerContents.open().entrySet()) {
                     pbd.pz.ContainerContents contents = entry.getValue();
                     contents.update(dt);
 
@@ -804,9 +878,9 @@ public final class Main {
                     // logs the per-item ray-test details once it's
                     // actually called; this covers the OTHER way E could
                     // find nothing - zero open containers to even check.
-                    System.out.println("[E-key] " + containerContents.size() + " open container group(s) to check"
-                        + (containerContents.isEmpty() ? " - nothing is open right now" : ""));
-                    for (var entry : containerContents.entrySet()) {
+                    System.out.println("[E-key] " + containerContents.open().size() + " open container group(s) to check"
+                        + (containerContents.open().isEmpty() ? " - nothing is open right now" : ""));
+                    for (var entry : containerContents.open().entrySet()) {
                         pbd.pz.ContainerContents contents = entry.getValue();
                         java.util.List<Vector3f> boxWorldCenters = new java.util.ArrayList<>();
                         java.util.List<org.joml.Quaternionf> boxWorldRotations = new java.util.ArrayList<>();
@@ -831,6 +905,7 @@ public final class Main {
                         String removed = contents.removeNearestToRay(boxWorldCenters, boxWorldRotations, camera.position, camera.forward());
                         if (removed != null) {
                             System.out.println("[Container] Removed " + removed);
+                            soundPlayer.play("pickup.wav"); // same "wire it now, supply the asset later" pattern as G's doomshotgun.wav below - SoundPlayer logs a warning and no-ops if the file isn't there yet rather than crashing.
                             break; // one item per press, from whichever open container's ray hit first
                         }
                     }
@@ -864,315 +939,16 @@ public final class Main {
                 }
                 updateHideTransition(camera, dt);
 
-                // G: "shoot" whatever's under the crosshair - voxelizes
-                // it (see pbd.voxel) and swaps its rendering from the
-                // main tessellation pass to the resulting voxel mesh,
-                // testing the primitive->voxel transform end to end
-                // rather than only running it offline. One-shot per
-                // instance - a second G on an already-destroyed one just
-                // finds nothing there anymore (findDestructibleAlongRay
-                // has no geometry left to hit once hideInstance has
-                // zeroed its transform).
+                // G: "shoot" whatever's under the crosshair - the whole
+                // behaviour lives behind PbdRenderer.destroyAt: the first
+                // hit voxelizes the instance and carves a crater, whatever
+                // the crater leaves unattached falls (updateDebris above,
+                // drawDestroyed below), and further hits keep carving the
+                // remains or a piece already lying on the floor.
                 if (justPressed(GLFW_KEY_G)) {
-                    int target = renderer.findDestructibleAlongRay(camera.position, camera.forward());
-                    // findDestructibleAlongRay only tests scene.instances'
-                    // own (possibly zeroed-by-hideInstance) worldTransforms
-                    // - an ALREADY-destroyed instance's original hitbox
-                    // effectively vanished along with its zeroed scale, so
-                    // aiming at its OWN debris afterward would otherwise
-                    // always report target<0 ("nothing destructible"),
-                    // exactly the reported "can't hit a voxel a second
-                    // time" bug. Checked here, separately, ONLY when the
-                    // primary raycast found nothing new: a simple ray-
-                    // sphere test against each already-destroyed
-                    // instance's own CURRENT live center (not its zeroed
-                    // worldTransforms - resolveLiveTransforms(), same
-                    // source the draw loop itself now uses, so a second
-                    // hit lands on wherever the debris ACTUALLY is this
-                    // frame, mid-swing included), radius approximated from
-                    // that instance's own original scale.
-                    int retargetIndex = -1;
-                    if (target < 0 && !destroyedRenderers.isEmpty()) {
-                        Matrix4f[] live = renderer.resolveLiveTransforms();
-                        float closestRetargetDist = Float.MAX_VALUE;
-                        for (int idx : destroyedRenderers.keySet()) {
-                            Vector3f center = live[idx].getTranslation(new Vector3f());
-                            pbd.format.PbdInstance destroyedInst = scene.instances.get(idx);
-                            float radius = 0.5f * (float) Math.sqrt(
-                                destroyedInst.scale.x * destroyedInst.scale.x
-                                + destroyedInst.scale.y * destroyedInst.scale.y
-                                + destroyedInst.scale.z * destroyedInst.scale.z);
-                            Vector3f toCenter = center.sub(camera.position, new Vector3f());
-                            float alongRay = toCenter.dot(camera.forward());
-                            if (alongRay < 0) continue; // behind the camera
-                            Vector3f closestPointOnRay = new Vector3f(camera.forward()).mul(alongRay).add(camera.position);
-                            float distToRay = closestPointOnRay.distance(center);
-                            if (distToRay <= radius && alongRay < closestRetargetDist) {
-                                closestRetargetDist = alongRay;
-                                retargetIndex = idx;
-                            }
-                        }
-                    }
-
-                    if (retargetIndex >= 0) {
-                        DestroyedPlacement placement = destroyedGridOrigins.get(retargetIndex);
-                        pbd.format.PbdInstance inst = scene.instances.get(retargetIndex);
-                        Matrix4f liveWorld = renderer.resolveLiveTransforms()[retargetIndex];
-                        // Same local-space impact-point derivation
-                        // findDestructibleAlongRay's own first-hit path
-                        // uses, just built by hand here since this ray
-                        // never went through that method at all (it tested
-                        // scene.instances' own zeroed transform and found
-                        // nothing, which is exactly why this branch exists).
-                        Matrix4f invLive = new Matrix4f(liveWorld).invert();
-                        Vector3f localOrigin = invLive.transformPosition(new Vector3f(camera.position));
-                        Vector3f localDir = invLive.transformDirection(new Vector3f(camera.forward()));
-                        float t = renderer.rayBoxIntersectionPublic(localOrigin, localDir, -0.5f, 0.5f);
-                        // THE fix for a real, reported "shot registers
-                        // (SFX plays) but doesn't alter the voxel, about
-                        // half the time" bug: the fallback here used to be
-                        // localOrigin itself (the camera's OWN position,
-                        // transformed into local space) whenever this
-                        // finer box test missed - which happens often
-                        // once debris has ALREADY been partially carved
-                        // by an earlier hit (its real, now-smaller visible
-                        // extent no longer fills the full canonical
-                        // -0.5..0.5 box this test checks against, even
-                        // though the sphere test above - generous, sized
-                        // off the ORIGINAL uncarved scale - still
-                        // correctly found this as the closest target).
-                        // Falling back to the camera's own position
-                        // placed the "impact" nowhere near the actual
-                        // object, so the crater computed from it removed
-                        // nothing from what's really left - exactly a
-                        // shot that plays its sound but visibly does
-                        // nothing. Falls back to the ray's own closest
-                        // approach to the sphere-test's center instead
-                        // now - not exact, but a real point near the
-                        // object's own actual position, not the
-                        // player's.
-                        Vector3f localHit;
-                        if (t >= 0) {
-                            localHit = new Vector3f(localDir).mul(t).add(localOrigin);
-                        } else {
-                            float alongRay = new Vector3f(0, 0, 0).sub(localOrigin).dot(new Vector3f(localDir).normalize());
-                            localHit = new Vector3f(localDir).normalize().mul(Math.max(0, alongRay)).add(localOrigin);
-                        }
-                        Vector3f impactWorldScaledLocal = new Vector3f(localHit.x * inst.scale.x, localHit.y * inst.scale.y, localHit.z * inst.scale.z);
-                        Vector3f impactGrid = impactWorldScaledLocal.sub(placement.gridOrigin, new Vector3f()).div(placement.voxelWorldSize);
-
-                        float craterRadiusVoxels = 14f; // raised from 6 ("bigger alterations" requested) - ~7cm radius at this resolution, not ~3cm
-                        java.util.Set<Long> removedSet = computeCraterRemovedSet(impactGrid, craterRadiusVoxels);
-                        // outerTestRadius: a plain distance bound (not
-                        // ray-based) used ONLY to decide whether a still-
-                        // merged region is anywhere NEAR enough to the
-                        // blast to be worth expanding for the real,
-                        // per-voxel ray-cast test above - rays can reach
-                        // a bit further than craterRadiusVoxels on their
-                        // own best day (up to *1.4), so this margin
-                        // covers that without needing to actually re-run
-                        // ray-casting just to decide what to expand.
-                        float outerTestRadius = craterRadiusVoxels * 1.4f;
-                        java.util.List<int[]> newSurvivors = new java.util.ArrayList<>();
-                        int[] removedThisHitBox = {0};
-                        for (int[] entry : placement.survivingEntries) {
-                            int ex = entry[0], ey = entry[1], ez = entry[2], esize = entry.length > 3 ? entry[3] : 1;
-                            applyCraterAdaptive(ex, ey, ez, esize, removedSet, impactGrid, outerTestRadius, newSurvivors, removedThisHitBox);
-                        }
-                        int removedThisHit = removedThisHitBox[0];
-                        placement.survivingEntries = newSurvivors;
-                        if (newSurvivors.isEmpty()) {
-                            ClassicMeshRenderer consumed = destroyedRenderers.remove(retargetIndex);
-                            if (consumed != null) consumed.close(); // same leak as the replacement case just above - freeing the map entry alone doesn't free its GPU resources
-                            System.out.println("[Destroy] '" + inst.id + "' -> fully consumed by a follow-up hit (" + removedThisHit + " voxel(s) removed)");
-                            soundPlayer.play("doomshotgun.wav");
-                        } else {
-                            var matFields = scene.materialOverrides.get(inst.material);
-                            float[] fallback = {0.62f, 0.63f, 0.66f};
-                            if (matFields != null && matFields.get("color") != null) {
-                                float[] parsed = parseColorTriple(matFields.get("color"));
-                                if (parsed != null) fallback = parsed;
-                            }
-                            final float[] fallbackColor2 = fallback;
-                            java.util.function.Function<int[], float[]> colorFn2 = buildVoxelColorFn(inst, matFields, fallbackColor2, placement.gridSize, placement.voxelWorldSize, renderer);
-                            var colored = pbd.voxel.VoxelMeshBuilder.buildMeshWithColor(newSurvivors, placement.voxelWorldSize, colorFn2);
-                            pbd.format.PbdInstance voxelInst = new pbd.format.PbdInstance(inst.id + "_voxels", "mesh");
-                            voxelInst.meshData = colored.meshData;
-                            voxelInst.material = inst.material;
-                            ClassicMeshRenderer newRenderer = buildMeshRenderer(voxelInst, scene, 0, colored.colors);
-                            if (newRenderer != null) {
-                                // Confirmed real GL resource leak, and the
-                                // actual cause of a reported "crashes if I
-                                // press G too much": destroyedRenderers.put
-                                // below REPLACES the map entry, but a
-                                // ClassicMeshRenderer owns real GPU
-                                // resources (VAO/VBO/IBO, a colorVbo for a
-                                // voxel result specifically) that don't get
-                                // freed just because the Java reference to
-                                // them is dropped - every repeated hit on
-                                // the same debris was leaking a full set of
-                                // these, accumulating without bound.
-                                // destroyedRenderers.put's own OTHER call
-                                // site (first-time destruction, further
-                                // below) doesn't have this problem since
-                                // there's no PREVIOUS renderer to leak yet.
-                                ClassicMeshRenderer previous = destroyedRenderers.get(retargetIndex);
-                                if (previous != null) previous.close();
-                                destroyedRenderers.put(retargetIndex, newRenderer);
-                                System.out.println("[Destroy] '" + inst.id + "' -> follow-up hit removed " + removedThisHit + " more voxel(s), " + newSurvivors.size() + " geometry piece(s) remain");
-                                soundPlayer.play("doomshotgun.wav");
-                            }
-                        }
-                    } else if (target < 0) {
-                        System.out.println("[Destroy] Nothing destructible under the crosshair");
-                    } else if (destroyedRenderers.containsKey(target)) {
-                        System.out.println("[Destroy] Already destroyed");
-                    } else {
-                        pbd.format.PbdInstance inst = scene.instances.get(target);
-                        // 0.005 world units - this project's own real-
-                        // world scale reference (1cm =~ Blender scale
-                        // 0.005) used DIRECTLY as the target voxel size,
-                        // not as a count - see PrimitiveVoxelizer.voxelize's
-                        // own doc for why this alone is what produces
-                        // high-definition surface / low-definition
-                        // interior (rasterizeAdaptive's existing
-                        // insertFilledBox early-return on a fully-
-                        // interior region), not a separate mechanism.
-                        var voxResult = pbd.voxel.PrimitiveVoxelizer.voxelize(inst, 0.005f);
-                        if (voxResult == null) {
-                            System.out.println("[Destroy] '" + inst.id + "' can't be voxelized (indestructible, or an unsupported/mesh type)");
-                        } else {
-                            // renderer.lastHitLocalPoint is in the
-                            // instance's CANONICAL (-0.5..0.5, unscaled)
-                            // local space - the same space
-                            // findDestructibleAlongRay's own rayBoxIntersection
-                            // test runs in. Converting to the octree's own
-                            // grid-coordinate space needs two steps: scale
-                            // up to WORLD-SCALED local units (multiply by
-                            // inst.scale - PrimitiveVoxelizer's own sx/sy/sz
-                            // ARE instance.scale.x/y/z, confirmed against
-                            // its own source), then subtract gridOriginLocal
-                            // and divide by voxelWorldSize to land in voxel
-                            // units.
-                            Vector3f impactWorldScaledLocal = new Vector3f(
-                                renderer.lastHitLocalPoint.x * inst.scale.x,
-                                renderer.lastHitLocalPoint.y * inst.scale.y,
-                                renderer.lastHitLocalPoint.z * inst.scale.z);
-                            Vector3f impactGrid = impactWorldScaledLocal.sub(voxResult.gridOriginLocal, new Vector3f())
-                                .div(voxResult.voxelWorldSize);
-
-                            // Crater radius in VOXEL units - history:
-                            // started at 15 (~7.5cm - reported as too
-                            // large, removing far more of a real prop
-                            // than a single impact should), reduced to 6
-                            // (~3cm - then explicitly requested to be
-                            // BIGGER again: "plus grosses alterations"),
-                            // now 14 (~7cm) - a fixed voxel-count radius
-                            // (not a fixed world-space one) means the
-                            // crater's own visual size in voxel-widths
-                            // stays consistent regardless of
-                            // voxelWorldSize.
-                            float craterRadiusVoxels = 14f;
-                            // Real ray-cast crater (see
-                            // computeCraterRemovedSet's own doc) - reported
-                            // TWICE as still looking like "pieces of
-                            // spheres with an uncomfortable repetition
-                            // pattern" under the previous distance-plus-
-                            // noise-jitter approach, which - fairly, in
-                            // hindsight - is still fundamentally a sphere
-                            // at its core no matter how its edge is
-                            // jittered. This is a structurally different
-                            // shape, not a smoothed-out version of the
-                            // same one.
-                            java.util.Set<Long> removedSet = computeCraterRemovedSet(impactGrid, craterRadiusVoxels);
-                            float outerTestRadius = craterRadiusVoxels * 1.4f; // rays can reach a bit past craterRadiusVoxels on their own best day - see this same margin's own doc at the other crater call site
-                            // Hybrid region/voxel expansion: a region
-                            // (collectFilledRegions - possibly large,
-                            // merged) survives WHOLE, unexpanded, if its
-                            // own AABB can't possibly be within the crater
-                            // radius of the impact point - only a region
-                            // that COULD overlap gets expanded down to its
-                            // own individual unit voxels for precise
-                            // per-voxel filtering. Tested against the naive
-                            // "expand everything to unit voxels first"
-                            // approach this replaced: a 1m cube at this
-                            // resolution produced 8,000,000 individual
-                            // voxel entries that way - correct, but far
-                            // more allocation/iteration than a single
-                            // impact crater actually needs, when the
-                            // object's own interior almost never needs
-                            // per-voxel resolution at all (see
-                            // rasterizeAdaptive's own doc: an interior
-                            // region is already one single large merged
-                            // box, which this keeps merged rather than
-                            // pointlessly expanding back out).
-                            var allRegions = voxResult.octree.collectFilledRegions();
-                            java.util.List<int[]> survivingEntries = new java.util.ArrayList<>(); // each entry is either an untouched region (size>1) or a surviving unit voxel (size=1) - VoxelMeshBuilder's addBox already handles either uniformly
-                            int totalVoxelCountForLogging = 0;
-                            int[] removedVoxelCountBox = {0};
-                            for (int[] region : allRegions) {
-                                totalVoxelCountForLogging += region[3] * region[3] * region[3];
-                                applyCraterAdaptive(region[0], region[1], region[2], region[3], removedSet, impactGrid, outerTestRadius, survivingEntries, removedVoxelCountBox);
-                            }
-                            int removedVoxelCountForLogging = removedVoxelCountBox[0];
-
-                            if (survivingEntries.isEmpty()) {
-                                // The whole thing was within the crater
-                                // radius (a small prop, or a point-blank
-                                // hit) - nothing left to render as a voxel
-                                // mesh at all; hiding the original is still
-                                // correct (it WAS destroyed), just with no
-                                // replacement geometry.
-                                renderer.hideInstance(target);
-                                System.out.println("[Destroy] '" + inst.id + "' -> fully destroyed (" + totalVoxelCountForLogging + " voxel(s), all within the impact radius)");
-                                soundPlayer.play("doomshotgun.wav");
-                            } else {
-                                // Per-voxel color: this material's own flat
-                                // color (scene.materialOverrides), the same
-                                // one buildMeshRenderer's own fallback path
-                                // already reads - NOT yet a real sample of
-                                var matFields = scene.materialOverrides.get(inst.material);
-                                float[] flatColor = {0.62f, 0.63f, 0.66f}; // ClassicMeshRenderer's own default, same neutral gray a mesh with no matching material override already falls back to
-                                if (matFields != null && matFields.get("color") != null) {
-                                    float[] parsed = parseColorTriple(matFields.get("color"));
-                                    if (parsed != null) flatColor = parsed;
-                                }
-                                final float[] fallbackColor = flatColor;
-                                java.util.function.Function<int[], float[]> colorFn = buildVoxelColorFn(inst, matFields, fallbackColor, voxResult.octree.gridSize(), voxResult.voxelWorldSize, renderer);
-
-                                var colored = pbd.voxel.VoxelMeshBuilder.buildMeshWithColor(
-                                    survivingEntries, voxResult.voxelWorldSize, colorFn);
-
-                                pbd.format.PbdInstance voxelInst = new pbd.format.PbdInstance(inst.id + "_voxels", "mesh");
-                                voxelInst.meshData = colored.meshData;
-                                voxelInst.material = inst.material;
-                                // position/rotation copied from the
-                                // ORIGINAL inst for correctness (see this
-                                // field's own history) - NOT actually
-                                // consulted by the current draw loop below
-                                // (which recomputes world transform fresh
-                                // from origInst + gridOrigin every frame),
-                                // kept anyway so voxelInst itself remains an
-                                // accurate PbdInstance rather than one whose
-                                // own transform fields silently lie about
-                                // where it is.
-                                voxelInst.position.set(inst.position);
-                                voxelInst.rotation.set(inst.rotation);
-                                ClassicMeshRenderer voxelRenderer = buildMeshRenderer(voxelInst, scene, 0, colored.colors);
-                                if (voxelRenderer != null) {
-                                    destroyedRenderers.put(target, voxelRenderer);
-                                    destroyedGridOrigins.put(target, new DestroyedPlacement(voxResult.gridOriginLocal, survivingEntries, voxResult.voxelWorldSize, voxResult.octree.gridSize()));
-                                    renderer.hideInstance(target);
-                                    int remainingVoxelCount = totalVoxelCountForLogging - removedVoxelCountForLogging;
-                                    System.out.println("[Destroy] '" + inst.id + "' -> " + remainingVoxelCount + "/" + totalVoxelCountForLogging
-                                        + " voxel(s) remaining after a " + craterRadiusVoxels + "-voxel-radius impact crater ("
-                                        + survivingEntries.size() + " geometry piece(s), most of the untouched interior still merged into large boxes), "
-                                        + colored.meshData.vertexCount() + " vertices");
-                                    soundPlayer.play("doomshotgun.wav");
-                                }
-                            }
-                        }
-                    }
+                    var destroyResult = renderer.destroyAt(camera.position, camera.forward());
+                    System.out.println(destroyResult.message());
+                    if (destroyResult.hit()) soundPlayer.play("doomshotgun.wav");
                 }
 
                 smoothedFps = smoothedFps * 0.9f + (dt > 0f ? 1f / dt : 0f) * 0.1f;
@@ -1220,6 +996,7 @@ public final class Main {
         // sees justPressed() fire again immediately and cycles forever.
         java.util.Arrays.fill(keysDown, false);
         java.util.Arrays.fill(keysJustPressed, false);
+        currentRenderer = null; // the renderer is closed now; the facade must not hand out a dead one
         return nextScenePath;
     }
 
@@ -1385,194 +1162,6 @@ public final class Main {
      * instance at a specific LOD tier - null on failure (a bad/missing
      * mesh at that tier), logged rather than thrown, so one broken
      * variant doesn't take the whole scene load down. */
-    /** A real ray-cast crater (the actual technique Minecraft's own TNT
-     * explosion uses - not a hypothesis, the well-documented algorithm:
-     * many rays from the blast center, each traveling outward with its
-     * own randomly-decaying strength, removing every block it passes
-     * through until it runs out), replacing an earlier distance-plus-
-     * noise-jitter approach that was reported (twice) as still visibly
-     * "spherical with an uncomfortable repetition pattern" - a jittered
-     * sphere is fundamentally still a sphere at its core; this is a
-     * genuinely different shape, not a smoother version of the same
-     * one. Deterministic (seeded from the impact point's own grid
-     * coordinate, not System-time or an unseeded Random) so hitting the
-     * exact same spot twice carves the exact same crater - reproducible
-     * for testing, not re-rolled into a DIFFERENT ugly shape on retry.
-     * Returns the set of removed grid coordinates, encoded as a single
-     * long (offsetting each axis by a large constant first so a
-     * negative coordinate - entirely normal near a grid's own center -
-     * never produces a colliding or sign-corrupted key) - a caller
-     * checks membership per-voxel with encodeGridCoord(x,y,z), the same
-     * encoding this method itself used to build the set. */
-    private static java.util.Set<Long> computeCraterRemovedSet(Vector3f impactGrid, float blastRadius) {
-        java.util.Set<Long> removed = new java.util.HashSet<>();
-        long seed = ((long) Float.floatToIntBits(impactGrid.x) * 73856093L)
-            ^ ((long) Float.floatToIntBits(impactGrid.y) * 19349663L)
-            ^ ((long) Float.floatToIntBits(impactGrid.z) * 83492791L);
-        java.util.Random rng = new java.util.Random(seed);
-        int rayCount = 40;
-        for (int i = 0; i < rayCount; i++) {
-            float theta = rng.nextFloat() * (float) (Math.PI * 2);
-            float phi = (float) Math.acos(2 * rng.nextFloat() - 1);
-            float dx = (float) (Math.sin(phi) * Math.cos(theta));
-            float dy = (float) (Math.sin(phi) * Math.sin(theta));
-            float dz = (float) Math.cos(phi);
-            float strength = blastRadius * (0.6f + rng.nextFloat() * 0.8f); // per-ray random reach - some rays punch further than others, the actual source of the irregular, non-spherical silhouette
-            float step = 0.75f;
-            float px = impactGrid.x, py = impactGrid.y, pz = impactGrid.z;
-            float traveled = 0f;
-            while (traveled < strength && strength > 0f) {
-                removed.add(encodeGridCoord((int) Math.floor(px), (int) Math.floor(py), (int) Math.floor(pz)));
-                strength -= rng.nextFloat() * step * 1.4f; // random decay per step, same source of jaggedness Minecraft's own algorithm has
-                px += dx * step; py += dy * step; pz += dz * step;
-                traveled += step;
-            }
-        }
-        return removed;
-    }
-
-    private static long encodeGridCoord(int x, int y, int z) {
-        long ox = x + 200000L, oy = y + 200000L, oz = z + 200000L; // large fixed offset - always positive for any coordinate this project's own MAX_OCTREE_DEPTH cap could ever produce
-        return ox * 1_000_000_000_000L + oy * 1_000_000L + oz;
-    }
-
-    /** Replaces an earlier "expand the WHOLE region to individual unit
-     * voxels the instant its AABB comes anywhere near the crater"
-     * approach - confirmed, via a real reported OutOfMemoryError, to
-     * blow up catastrophically once the crater radius was raised (a
-     * single large merged region - up to 128+ voxels on a side for a
-     * sizeable prop - expands to size^3 individual int[] entries the
-     * moment ANY part of it is within reach, which for a big region
-     * near a wide-radius crater could be millions of entries from ONE
-     * region alone, several such regions compounding further). This
-     * recurses octree-style instead, the same adaptive principle
-     * PrimitiveVoxelizer.rasterizeAdaptive itself already uses for the
-     * original voxelization: a region entirely outside the outer test
-     * radius survives WHOLE, unexamined further; a region small enough
-     * (size 1) gets tested directly against the real ray-cast
-     * removedSet; anything else - genuinely ambiguous, actually near
-     * the crater's own boundary - splits into 8 octants and recurses,
-     * so only the geometry ACTUALLY close to the impact ever gets
-     * refined down to individual voxels, not everything merely inside
-     * a broad bounding radius. removedCount[0] accumulates the removed
-     * voxel tally (an int[1] "out parameter", since a private static
-     * method can't return two things without a small record - not
-     * worth one here for something called this hot). */
-    private static void applyCraterAdaptive(int rx, int ry, int rz, int rsize,
-            java.util.Set<Long> removedSet, Vector3f impactGrid, float outerTestRadius,
-            java.util.List<int[]> survivingEntries, int[] removedCount) {
-        float cx = Math.max(rx, Math.min(impactGrid.x, rx + rsize));
-        float cy = Math.max(ry, Math.min(impactGrid.y, ry + rsize));
-        float cz = Math.max(rz, Math.min(impactGrid.z, rz + rsize));
-        float distSq = (cx - impactGrid.x) * (cx - impactGrid.x)
-            + (cy - impactGrid.y) * (cy - impactGrid.y)
-            + (cz - impactGrid.z) * (cz - impactGrid.z);
-        if (distSq > outerTestRadius * outerTestRadius) {
-            survivingEntries.add(new int[]{rx, ry, rz, rsize}); // nowhere near the impact - kept as one merged box, never expanded
-            return;
-        }
-        if (rsize == 1) {
-            if (removedSet.contains(encodeGridCoord(rx, ry, rz))) removedCount[0]++;
-            else survivingEntries.add(new int[]{rx, ry, rz, 1});
-            return;
-        }
-        int half = rsize / 2;
-        for (int i = 0; i < 8; i++) {
-            int ox = rx + ((i & 1) != 0 ? half : 0);
-            int oy = ry + ((i & 2) != 0 ? half : 0);
-            int oz = rz + ((i & 4) != 0 ? half : 0);
-            applyCraterAdaptive(ox, oy, oz, half, removedSet, impactGrid, outerTestRadius, survivingEntries, removedCount);
-        }
-    }
-
-    /** Extracts JUST the rotation from a world matrix that may carry
-     * strongly non-uniform scale, WITHOUT JOML's own
-     * Matrix4f.getNormalizedRotation()'s confirmed failure mode there:
-     * a direct numeric test (this codebase's own history has the full
-     * before/after) against a real instance with a 27:1 ratio between
-     * its smallest and largest scale axis showed that method returning
-     * something that isn't even a valid unit quaternion (x^2+y^2+z^2+w^2
-     * far from 1), producing a visibly wrong rotation. The standard,
-     * robust technique instead: take the matrix's own 3 basis columns
-     * (its upper-left 3x3, each column already CARRYING that axis's own
-     * scale baked in) and normalize each one INDEPENDENTLY - dividing
-     * out exactly that column's own scale contribution, however
-     * different it is from the other two - before building a rotation-
-     * only 3x3 and reading its quaternion; unlike
-     * getNormalizedRotation()'s own approach, this never has to assume
-     * or approximate a single shared scale factor across all three axes
-     * at once. */
-    /** Shared between the initial-destruction and follow-up-hit (retarget)
-     * code paths - extracted so a voxel hit a SECOND time keeps showing
-     * real texture-sampled color instead of silently falling back to
-     * flat color just because it's being rebuilt via the OTHER call
-     * site. See this method's own inline doc (moved here from its
-     * original, single-call-site home) for the full history of why this
-     * was disabled and re-enabled. */
-    /** Rewritten to use PbdRenderer's own pre-decoded voxelTexturePixels
-     * cache instead of calling STBImage directly here - see that
-     * cache's own doc (PbdRenderer.upload()) for why: every earlier
-     * version of this method called stbi_load itself, live, from
-     * inside the G-key handler's own call stack, mid-frame - and kept
-     * correlating with a real, repeatedly-reported native crash despite
-     * several rounds of defensive hardening and one unrelated-but-
-     * plausible fix (a shared shader program) that turned out NOT to
-     * be the actual cause either, confirmed by the crash recurring
-     * again after that fix shipped. This version never touches
-     * STBImage or any native image-decoding call at all - the texture
-     * was already fully decoded, once, back at scene-load time, in the
-     * exact same call context MaterialTextureArray's own (long-
-     * confirmed-working) texture loading already uses. */
-    private static java.util.function.Function<int[], float[]> buildVoxelColorFn(
-            pbd.format.PbdInstance inst, java.util.Map<String, String> matFields, float[] fallbackColor,
-            int gridSize, float voxelWorldSize, PbdRenderer renderer) {
-        String texturePath = matFields != null ? matFields.get("texture") : null;
-        if (texturePath == null) return voxel -> fallbackColor;
-
-        PbdRenderer.VoxelTexturePixels tex = renderer.voxelTexturePixelsFor(texturePath);
-        if (tex == null) {
-            System.out.println("[Destroy] No pre-decoded pixel data for texture '" + texturePath + "' - using flat color instead");
-            return voxel -> fallbackColor;
-        }
-
-        int texW = tex.width(), texH = tex.height();
-        byte[] pixelBytes = tex.pixelBytes();
-        int gvx = Math.max(1, Math.round(inst.scale.x / voxelWorldSize));
-        int gvy = Math.max(1, Math.round(inst.scale.y / voxelWorldSize));
-        int gvz = Math.max(1, Math.round(inst.scale.z / voxelWorldSize));
-        int foX = (gridSize - gvx) / 2, foY = (gridSize - gvy) / 2, foZ = (gridSize - gvz) / 2;
-        return voxel -> {
-            float nx = (voxel[0] - foX) / (float) gvx;
-            float ny = (voxel[1] - foY) / (float) gvy;
-            float nz = (voxel[2] - foZ) / (float) gvz;
-            float dx = Math.abs(nx - 0.5f), dy = Math.abs(ny - 0.5f), dz = Math.abs(nz - 0.5f);
-            float u, v;
-            if (dx >= dy && dx >= dz) { u = nz; v = ny; }
-            else if (dy >= dx && dy >= dz) { u = nx; v = nz; }
-            else { u = nx; v = ny; }
-            int px = Math.floorMod((int) (u * texW), texW);
-            int py = Math.floorMod((int) (v * texH), texH);
-            int idx = (py * texW + px) * 4;
-            return new float[]{
-                (pixelBytes[idx] & 0xFF) / 255f,
-                (pixelBytes[idx + 1] & 0xFF) / 255f,
-                (pixelBytes[idx + 2] & 0xFF) / 255f
-            };
-        };
-    }
-
-    private static org.joml.Quaternionf extractRotationRobust(Matrix4f m) {
-        Vector3f colX = new Vector3f(m.m00(), m.m01(), m.m02()).normalize();
-        Vector3f colY = new Vector3f(m.m10(), m.m11(), m.m12()).normalize();
-        Vector3f colZ = new Vector3f(m.m20(), m.m21(), m.m22()).normalize();
-        Matrix4f rotOnly = new Matrix4f(
-            colX.x, colX.y, colX.z, 0,
-            colY.x, colY.y, colY.z, 0,
-            colZ.x, colZ.y, colZ.z, 0,
-            0, 0, 0, 1);
-        return rotOnly.getNormalizedRotation(new org.joml.Quaternionf());
-    }
-
     private static ClassicMeshRenderer buildMeshRenderer(pbd.format.PbdInstance inst, pbd.format.PbdScene scene, int tier) {
         return buildMeshRenderer(inst, scene, tier, null);
     }

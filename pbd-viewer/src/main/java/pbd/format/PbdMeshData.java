@@ -42,6 +42,27 @@ public final class PbdMeshData {
         return positions.length / 3;
     }
 
+    /**
+     * The axis-aligned box around the vertices, {minX, minY, minZ, maxX, maxY, maxZ}, in the
+     * mesh's own local units - or null for a mesh with no vertex. A mesh is "deliberately
+     * whatever geometry it is": unlike the procedural primitives (all inside -0.5..0.5) its
+     * vertices are not normalised, so anything that needs to know where a mesh instance really
+     * is (a ray test, voxelization) has to ask the mesh.
+     */
+    public float[] bounds() {
+        int n = vertexCount();
+        if (n == 0) return null;
+        float[] b = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+        for (int v = 0; v < n; v++) {
+            for (int a = 0; a < 3; a++) {
+                float p = positions[v * 3 + a];
+                if (p < b[a]) b[a] = p;
+                if (p > b[3 + a]) b[3 + a] = p;
+            }
+        }
+        return b;
+    }
+
     public String toBase64() {
         int vertexCount = vertexCount();
         ByteBuffer buf = ByteBuffer.allocate(4 + 4 + vertexCount * 32 + indices.length * 4).order(ByteOrder.LITTLE_ENDIAN);

@@ -2,14 +2,17 @@ package pbd.voxel;
 
 import pbd.format.PbdInstance;
 import pbd.format.PbdMeshData;
+import pbd.format.PbdModifier;
 
 /**
  * Converts a single PBD primitive instance's canonical shape into a
  * VoxelOctree - the runtime primitive->voxel transform the roadmap
- * asks for. Mesh-type instances are explicitly out of scope for now
- * (kept for a later pass, per the roadmap's own sequencing) -
- * voxelize() returns null for one, same as for an indestructible
- * instance, rather than guessing at a triangle-soup's interior.
+ * asks for. A mesh-type instance is voxelized from its triangles
+ * (voxelizeMesh below: exact triangle/box overlap for the surface,
+ * ray parity for the inside - so it is right for a CLOSED mesh and
+ * says nothing useful for an open one; a mesh with no thickness at all
+ * returns null). voxelize() also returns null for an indestructible
+ * instance.
  *
  * Shape definitions: every canonical primitive is a 1-unit shape
  * centered at the origin in its own LOCAL space (-0.5..+0.5 on each
@@ -69,8 +72,9 @@ public final class PrimitiveVoxelizer {
     private static final int MAX_OCTREE_DEPTH = 10;
 
     /** Returns null for an indestructible instance (never voxelized, by
-     * design - see the roadmap this implements) or a mesh-type one (not
-     * supported yet). targetVoxelWorldSize is an ABSOLUTE size, in this
+     * design - see the roadmap this implements), for a mesh with no
+     * geometry or no thickness, and for an unknown type.
+     * targetVoxelWorldSize is an ABSOLUTE size, in this
      * scene's own world units, NOT a voxel count - see this project's
      * own real-world scale reference (1cm is roughly a Blender scale of
      * 0.005), passed here directly rather than as a per-axis COUNT, so
@@ -105,13 +109,43 @@ public final class PrimitiveVoxelizer {
             effectiveSy = Math.max(sx, sz) * MIN_THICKNESS_FRACTION;
         }
 
-        float longestAxis = Math.max(effectiveSy, Math.max(sx, sz));
+        // A REAL, confirmed bug this turn: the grid below used to be
+        // sized from sx/sz alone - the instance's own UNMODIFIED scale -
+        // with no allowance for a modifier making the final (visible)
+        // shape extend further out than that. taper's own applyTaper
+        // scales X/Z by mix(bottomScale, topScale, y+0.5): whichever of
+        // the two ends is furthest from 1.0 is exactly how far past the
+        // canonical radius that end reaches. A WIDENING taper
+        // (topScale=2, say) got silently clipped to the grid's own,
+        // too-small extent - reproduced directly: 77% of the exact
+        // frustum volume instead of the correct 100% (see
+        // RegressionTaperWide). A narrowing-only taper (every prior
+        // test here, including the shipped bottomScale=1/topScale=0.3
+        // case) never exceeds 1.0, so max(...,1f) below leaves gridX/
+        // gridZ, and every test that already passed, completely
+        // unchanged - this widens the grid ONLY when a modifier could
+        // actually need the extra room, never shrinks it. bend is a
+        // separate, larger case (its own extent depends on the whole
+        // arc, not one linear factor) and is NOT covered by this -
+        // still an open item, see the roadmap.
+        float taperMaxScale = 1f;
+        for (PbdModifier mod : instance.modifiers) {
+            if ("taper".equals(mod.type)) {
+                float bottomScale = mod.getFloat("bottomScale", 1f);
+                float topScale = mod.getFloat("topScale", 1f);
+                taperMaxScale = Math.max(taperMaxScale, Math.max(Math.abs(bottomScale), Math.abs(topScale)));
+            }
+        }
+        float effectiveSx = sx * taperMaxScale;
+        float effectiveSz = sz * taperMaxScale;
+
+        float longestAxis = Math.max(effectiveSy, Math.max(effectiveSx, effectiveSz));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-scale) instance - nothing to voxelize
         float voxelWorldSize = targetVoxelWorldSize;
 
-        int gridX = Math.max(1, Math.round(sx / voxelWorldSize));
+        int gridX = Math.max(1, Math.round(effectiveSx / voxelWorldSize));
         int gridY = Math.max(1, Math.round(effectiveSy / voxelWorldSize));
-        int gridZ = Math.max(1, Math.round(sz / voxelWorldSize));
+        int gridZ = Math.max(1, Math.round(effectiveSz / voxelWorldSize));
         int gridMax = Math.max(gridX, Math.max(gridY, gridZ));
         int depth = 1;
         while ((1 << depth) < gridMax && depth < MAX_OCTREE_DEPTH) depth++;
@@ -136,14 +170,68 @@ public final class PrimitiveVoxelizer {
         // which axis or how thin the object is on it.
         int offX = (gridSize - gridX) / 2, offY = (gridSize - gridY) / 2, offZ = (gridSize - gridZ) / 2;
 
+        RegionClassifier baseClassifier = switch (instance.type) {
+            case "cylinder" -> PrimitiveVoxelizer::classifyCylinder;
+            case "cone" -> PrimitiveVoxelizer::classifyCone;
+            case "torus" -> PrimitiveVoxelizer::classifyTorus;
+            case "sphere" -> PrimitiveVoxelizer::classifySphere;
+            default -> null; // cube/disc/plane use their own dedicated voxelize* below, not this classifier path
+        };
+
         switch (instance.type) {
             case "cube" -> voxelizeCube(octree, offX, offY, offZ, gridX, gridY, gridZ);
-            case "cylinder" -> rasterizeAdaptive(octree, PrimitiveVoxelizer::classifyCylinder, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize);
-            case "cone" -> rasterizeAdaptive(octree, PrimitiveVoxelizer::classifyCone, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize);
+            case "cylinder", "cone", "torus", "sphere" -> {
+                // taper is the only modifier this voxelizer accounts
+                // for so far (see this method's own PbdModifier lookup
+                // below and the roadmap for bend/twist/curve, not yet
+                // attempted - bend's own forward transform has no
+                // closed-form inverse, needing either a numerical
+                // solver or a materially larger effort to get right;
+                // taper's does, since Y is never touched by it, so
+                // scale is a direct function of a region's own Y range
+                // alone). Wrapped here, once, rather than per-case,
+                // now that every rasterizeAdaptive call site shares
+                // one classifier variable.
+                RegionClassifier classifier = baseClassifier;
+                for (PbdModifier mod : instance.modifiers) {
+                    if ("taper".equals(mod.type)) {
+                        classifier = wrapWithTaper(classifier,
+                            mod.getFloat("bottomScale", 1f), mod.getFloat("topScale", 1f));
+                    }
+                }
+                // 18-arg overload, not the plain 11-arg default (localOrigin
+                // -0.5, localExtent 1 on every axis): rasterizeAdaptive's own
+                // (gox-offX)/gx*localExtent+localOrigin formula ALWAYS
+                // re-normalizes the FULL [offX,offX+gridX] octree range to
+                // exactly [localOrigin, localOrigin+localExtent], regardless
+                // of gridX's actual value - so simply widening gridX/gridZ
+                // above (to physically fit a widened taper's own extent)
+                // does NOT, on its own, change what "canonical space" means
+                // to the classifier: it only adds resolution within the SAME
+                // -0.5..0.5 window. wrapWithTaper's own inverse-scale math
+                // expects its input already expressed in TRUE (0.5 = the
+                // shape's real, un-widened canonical radius) units - fed the
+                // self-normalized -0.5..0.5 instead, it classified the
+                // correct FRACTION of the grid, which the wider gridOriginLocal
+                // then placed across a proportionally wider world-space region
+                // - stretching the whole shape by taperMaxScale instead of
+                // only its actually-wide end (confirmed directly: volume
+                // ratio 3.08 instead of the intended 1.0, worse than the
+                // pre-widening 0.77). Scaling localOrigin/localExtent by
+                // taperMaxScale on X/Z (Y unaffected - taper never touches
+                // it) makes the widened grid's own [-0.5,0.5]-worth of
+                // octree units map to true canonical [-0.5*taperMaxScale,
+                // +0.5*taperMaxScale] instead - exactly matching how far a
+                // taper of that strength can actually reach - so
+                // wrapWithTaper's own (unchanged) math now divides an
+                // already-correctly-scaled value by the real scale factor.
+                rasterizeAdaptive(octree, classifier, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0,
+                    gridSize, gridSize, gridSize,
+                    -0.5f * taperMaxScale, -0.5f, -0.5f * taperMaxScale,
+                    taperMaxScale, 1f, taperMaxScale);
+            }
             case "disc" -> voxelizeDisc(octree, offX, offY, offZ, gridX, gridY, gridZ);
             case "plane" -> voxelizeCube(octree, offX, offY, offZ, gridX, gridY, gridZ); // a plane's already-extruded shape IS just a thin box - same fill as cube
-            case "torus" -> rasterizeAdaptive(octree, PrimitiveVoxelizer::classifyTorus, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize);
-            case "sphere" -> rasterizeAdaptive(octree, PrimitiveVoxelizer::classifySphere, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0, gridSize);
             default -> {
                 return null; // unknown/unsupported type - safer to produce nothing than a wrong guess
             }
@@ -165,10 +253,23 @@ public final class PrimitiveVoxelizer {
         // clean off the object's own actual occupied range entirely
         // (a reported "no crater appears at all" turned out to be a
         // crater correctly computed, just centered outside the object).
+        // effectiveSx/effectiveSz here (not the raw sx/sz), matching
+        // gridX/gridZ's own switch above - offX/offZ were sized from
+        // the WIDENED extent, so the half-extent subtracted to center
+        // the grid has to be that same widened value, not the original
+        // scale, or the two would disagree and the whole grid would
+        // sit off-center by the difference. classify()'s own canonical
+        // [-0.5,0.5] space (rasterizeAdaptive's (gox-offX)/gx-0.5
+        // formula) stays self-normalized regardless of gridX's actual
+        // value, so widening the grid changes resolution there, not
+        // meaning - it's this LOCAL-space placement, entirely separate
+        // from that classify()-time math, that actually needed to widen
+        // for a taper's own wider point to land in the right place at
+        // all instead of silently clipping (see RegressionTaperWide).
         org.joml.Vector3f gridOriginLocal = new org.joml.Vector3f(
-            -offX * voxelWorldSize - sx / 2f,
+            -offX * voxelWorldSize - effectiveSx / 2f,
             -offY * voxelWorldSize - effectiveSy / 2f,
-            -offZ * voxelWorldSize - sz / 2f);
+            -offZ * voxelWorldSize - effectiveSz / 2f);
         return new Result(octree, voxelWorldSize, gridOriginLocal);
     }
 
@@ -182,6 +283,46 @@ public final class PrimitiveVoxelizer {
      * other shape test in this class. */
     private interface RegionClassifier {
         int classify(float minX, float minY, float minZ, float maxX, float maxY, float maxZ);
+    }
+
+    /** Wraps a canonical-space classifier so it can be tested against a
+     * region that lives in TAPERED (final, on-screen) space instead -
+     * see pbd.tese's own applyTaper for the forward transform this
+     * inverts: pos.x *= scale, pos.z *= scale, scale = mix(bottomScale,
+     * topScale, pos.y+0.5) - Y is never touched, so scale is a direct
+     * function of a region's own Y range alone, no coupling with X/Z
+     * the way bend's own angle-times-offset formula has (why bend
+     * isn't attempted here - see this method's own caller). For a
+     * region spanning [minY,maxY], scale itself ranges over
+     * [minScaleAtY, maxScaleAtY] (taper is linear in Y, so the extremes
+     * are exactly at the two endpoints) - inverse-mapping [minX,maxX]
+     * through EVERY combination of that scale range gives the widest
+     * (safe, conservative) canonical-space X range this tapered region
+     * could possibly correspond to, and same for Z.
+     *
+     * The widened box B is a SUPERSET of the region's true preimage P (for
+     * each y, x ranges over [minX/scale(y), maxX/scale(y)], which is inside
+     * [loX,hiX]), so BOTH verdicts carry over safely: B entirely outside the
+     * canonical shape means P is outside too, and B entirely inside means P
+     * is inside too (P is a subset of B). An earlier version of this wrapper
+     * downgraded every "fully inside" to "ambiguous", on the mistaken belief
+     * that only "outside" survives the widening - it never changed a result
+     * (the size-1 point test agrees with a box verdict by construction), it
+     * only forced needless recursion through the whole interior. */
+    private static RegionClassifier wrapWithTaper(RegionClassifier inner, float bottomScale, float topScale) {
+        return (minX, minY, minZ, maxX, maxY, maxZ) -> {
+            float scaleAtMinY = bottomScale + (topScale - bottomScale) * (minY + 0.5f);
+            float scaleAtMaxY = bottomScale + (topScale - bottomScale) * (maxY + 0.5f);
+            float minScale = Math.max(1e-6f, Math.min(scaleAtMinY, scaleAtMaxY));
+            float maxScale = Math.max(1e-6f, Math.max(scaleAtMinY, scaleAtMaxY));
+
+            float loX = Math.min(Math.min(minX / minScale, minX / maxScale), Math.min(maxX / minScale, maxX / maxScale));
+            float hiX = Math.max(Math.max(minX / minScale, minX / maxScale), Math.max(maxX / minScale, maxX / maxScale));
+            float loZ = Math.min(Math.min(minZ / minScale, minZ / maxScale), Math.min(maxZ / minScale, maxZ / maxScale));
+            float hiZ = Math.max(Math.max(minZ / minScale, minZ / maxScale), Math.max(maxZ / minScale, maxZ / maxScale));
+
+            return inner.classify(loX, minY, loZ, hiX, maxY, hiZ);
+        };
     }
 
     /** Recursively classifies successively smaller octree-grid regions
@@ -487,6 +628,10 @@ public final class PrimitiveVoxelizer {
         float extentZ = (meshMaxZ - meshMinZ) * sz;
         float longestAxis = Math.max(extentX, Math.max(extentY, extentZ));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-size) mesh
+        // A mesh with no thickness on some axis (a single quad, a decal) encloses no volume:
+        // there is no inside to find, and the grid would degenerate (a zero-height cell range
+        // that came out as a block more than a metre thick). Nothing solid to destroy.
+        if (Math.min(extentX, Math.min(extentY, extentZ)) < longestAxis * 1e-4f) return null;
 
         float voxelWorldSize = targetVoxelWorldSize;
         // Local-space voxel size (before instance.scale) - the grid
@@ -521,23 +666,25 @@ public final class PrimitiveVoxelizer {
 
         // Same gridOriginLocal convention as every other voxelize*
         // result - where the octree's own (0,0,0) grid corner sits
-        // relative to the INSTANCE's own local origin, so the caller
-        // can place voxel (0,0,0) back where the mesh actually was.
+        // relative to the INSTANCE's own origin, in WORLD-scale units
+        // (the voxel mesh is placed with rotation and translation only -
+        // see DestructionWorld.withWorldScale), so the caller can place
+        // voxel (0,0,0) back where the mesh actually was.
         // Built from the mesh's own bounding-box min, not the "-scale/2"
         // canonical-shape formula every other type uses (a mesh's own
         // local origin isn't necessarily its bounding-box center the
-        // way a canonical shape's is).
-        // Same fix as the other gridOriginLocal computation above (see
-        // that one's own doc for the full story: offX/offY/offZ are in
-        // gridSize's OWN shared octree units, where one unit always
-        // equals voxelWorldSize regardless of this axis's own gridX/
-        // gridY/gridZ - dividing by gridX instead of just multiplying
-        // by voxelWorldSize was the actual bug, confirmed by direct
-        // reproduction against a real case).
+        // way a canonical shape's is). The bounding-box min is in the
+        // mesh's LOCAL units, so it takes the instance scale like
+        // every other length here; offX/offY/offZ are in gridSize's OWN
+        // shared octree units, where one unit always equals
+        // voxelWorldSize (see the other gridOriginLocal computation
+        // above for that story). Leaving the scale out put a scaled mesh
+        // half its size off from where it stood (a unit cube at scale 2
+        // came out as [-0.5, 1.5] instead of [-1, 1]).
         org.joml.Vector3f gridOriginLocal = new org.joml.Vector3f(
-            meshMinX - offX * voxelWorldSize,
-            meshMinY - offY * voxelWorldSize,
-            meshMinZ - offZ * voxelWorldSize);
+            meshMinX * sx - offX * voxelWorldSize,
+            meshMinY * sy - offY * voxelWorldSize,
+            meshMinZ * sz - offZ * voxelWorldSize);
         return new Result(octree, voxelWorldSize, gridOriginLocal);
     }
 
@@ -578,6 +725,15 @@ public final class PrimitiveVoxelizer {
                                               float meshMaxX, float meshMaxY, float meshMaxZ,
                                               float px, float py, float pz) {
         float rayEndX = meshMaxX + 1f; // 1 unit past the mesh's own bounds - comfortably outside, still close to the mesh's own scale
+        // Nudge the ray off any edge or vertex it could run along. On an axis-aligned mesh (a
+        // cube - the commonest mesh there is) the centre of a big region sits exactly on the
+        // diagonal of a face: the ray then touches BOTH triangles that share that diagonal,
+        // counts two crossings instead of one, and the region reads "outside" - a plain unit cube
+        // lost 21 % of its volume that way. An offset that is a tiny, awkward fraction of the
+        // mesh's size is never on an authored edge, and is far below a voxel.
+        float span = Math.max(meshMaxX - meshMinX, Math.max(meshMaxY - meshMinY, meshMaxZ - meshMinZ));
+        py += span * 1.371e-5f;
+        pz += span * 0.826e-5f;
         int crossings = 0;
         for (int i = 0; i < indices.length; i += 3) {
             int i0 = indices[i] * 3, i1 = indices[i + 1] * 3, i2 = indices[i + 2] * 3;

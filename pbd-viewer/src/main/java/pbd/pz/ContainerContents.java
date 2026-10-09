@@ -17,11 +17,13 @@ import java.util.Random;
  * One container's bin-packed contents - computed once, lazily, the
  * first time the container is seen open (see PbdRenderer's
  * isInstanceOpen - triggers the instant a linked door is toggled open,
- * not once its swing animation finishes), and cached until every linked
- * door is closed again (see Main.java's eviction step next to where
- * this is loaded), matching this project's own "no computation or
- * display before the container opens, cache the result, clear it once
- * closed" rule.
+ * not once its swing animation finishes), and kept while it is open.
+ * When every linked door is closed again the contents are put on a
+ * shelf, not thrown away (see ContainerStock, which Main.java's frame
+ * loop drives), and the next opening gives back this very object -
+ * what the player took stays gone - until the scene changes. This
+ * keeps the project's own rule of "no computation or display before
+ * the container opens": nothing is loaded, or drawn, before then.
  *
  * The falling simulation here is deliberately simple, not a real rigid-
  * body physics engine: each item just tracks a fall speed and drops
@@ -97,11 +99,12 @@ public final class ContainerContents {
      * every time the scene loads fresh, rather than re-rolling on every
      * run. This only covers "the same seed always produces the same
      * initial pack" - it does NOT persist to disk what's since been
-     * individually removed or moved (see this method's caller in
-     * Main.java for where that gap is flagged, since it's a real,
-     * separate piece of unfinished work: an in-memory cache reset when
-     * the whole app restarts, however deterministic, is not the same as
-     * "coming back and finding a removed item still gone").
+     * individually removed or moved. Within one run an item that was
+     * taken stays gone (ContainerStock keeps these contents on a shelf
+     * while the doors are shut and gives the same object back); a
+     * restart of the viewer refills the containers, since nothing is
+     * written anywhere - "coming back tomorrow and finding a removed
+     * item still gone" would need a save file, which does not exist.
      *
      * Any individual FBX file that fails to load is skipped with a
      * console warning rather than aborting the whole group - one bad
