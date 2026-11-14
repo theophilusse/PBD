@@ -1,6 +1,5 @@
 package pbd.render;
 
-import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -20,24 +19,29 @@ public final class GlWindow implements AutoCloseable {
 
     private final long handle;
 
+    /**
+     * The request that made the previous window of this program (a scene switch opens a new window each time): asked first, so that a
+     * machine that needed its second or third request does not repeat the refusals of the first at every N / B press.
+     */
+    private static volatile GlContextPlan.Attempt lastRequest;
+
+    /**
+     * Opens the window with the context the engine's shaders need: OpenGL 4.3 core, forward-compatible - the request this class has
+     * always made, and still the first one. When the machine refuses it, the neighbouring requests are tried (the other platform on a
+     * Linux desktop that has two, no forward-compatible flag, a compatibility context, the other context API), and when none is
+     * accepted the exception says what each one was answered, what the machine is and what to do - see {@link GlContextPlan} and
+     * {@link GlContextNegotiator}. PBD_GL_PLATFORM (x11, wayland) and PBD_GL_API (native, egl) choose for oneself.
+     */
     public GlWindow(int width, int height, String title) {
-        GLFWErrorCallback.createPrint(System.err).set();
-
-        if (!glfwInit()) {
-            throw new IllegalStateException("Could not initialize GLFW");
+        LwjglGlfwDriver driver = new LwjglGlfwDriver();
+        GlContextNegotiator.Opened opened;
+        try {
+            opened = GlContextNegotiator.open(driver, width, height, title, System.getenv(), System.getProperties(), lastRequest, System.out::println);
+        } finally {
+            driver.printErrorsAgain(); // GLFW's errors are printed on System.err from here on, as they always were
         }
-
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-
-        handle = glfwCreateWindow(width, height, title, 0L, 0L);
-        if (handle == 0L) {
-            throw new IllegalStateException(
-                "Could not create the GLFW window (check that the requested "
-                + "context - OpenGL 4.3 core - is available on this machine)");
-        }
+        lastRequest = opened.attempt();
+        handle = opened.handle();
 
         glfwMakeContextCurrent(handle);
         glfwSwapInterval(1);

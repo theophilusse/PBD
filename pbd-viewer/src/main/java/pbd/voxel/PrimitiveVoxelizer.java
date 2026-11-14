@@ -1,33 +1,34 @@
 package pbd.voxel;
 
+import pbd.format.ModifierParams;
 import pbd.format.PbdInstance;
 import pbd.format.PbdMeshData;
 import pbd.format.PbdModifier;
 
 /**
- * Converts a single PBD primitive instance's canonical shape into a
- * VoxelOctree - the runtime primitive->voxel transform the roadmap
- * asks for. A mesh-type instance is voxelized from its triangles
- * (voxelizeMesh below: exact triangle/box overlap for the surface,
- * ray parity for the inside - so it is right for a CLOSED mesh and
- * says nothing useful for an open one; a mesh with no thickness at all
- * returns null). voxelize() also returns null for an indestructible
- * instance.
+ * Converts a single PBD instance into a VoxelOctree - the runtime primitive->voxel transform behind the G key. What is turned into
+ * voxels is what the shader DRAWS, not what the type's name suggests: {@link ShapeEval} is the Java port of the tessellation shader
+ * (held to the GLSL by RegressionShaderPort, on the same points), and {@link #voxelize} asks it which parts the shape has (a hollow
+ * cylinder has a wall and no caps, a cube with removed faces is open), how it is rounded and which modifiers act on it. Three
+ * voxelizers share the work:
+ * <ul>
+ *   <li>the CLOSED SOLIDS that are at most tapered (sphere, torus, cylinder, cone, cube, rounded cube) and the unmodified planes and
+ *       discs go through the analytic classifiers of this class: a region of space is told to be inside, outside or on the boundary
+ *       (exact, and cheap: the interior is bulk-filled);</li>
+ *   <li>every other shape - a hollow or open one, anything bent or sheared, a modified plane or disc - goes through
+ *       {@link ForwardVoxelizer}, which builds its voxels from the surface the shader would draw (there is no closed form to classify);</li>
+ *   <li>a mesh goes through {@link MeshVoxelizer}, from its own triangles.</li>
+ * </ul>
+ * An instance scaled by a negative number is its own mirror image there: it is voxelized with the scale made positive and the grid is
+ * turned over afterwards ({@link GridMirror}).
  *
- * Shape definitions: every canonical primitive is a 1-unit shape
- * centered at the origin in its own LOCAL space (-0.5..+0.5 on each
- * axis - the same convention instanceWorldSize/BinPacker/every other
- * part of this codebase that reasons about primitive extent already
- * uses), tested here at each candidate voxel's LOCAL-space center
- * before mapping it into the octree's integer grid. These are
- * standard parametric definitions for each shape (see each voxelizeX
- * method's own comment for the exact formula) - written from the
- * established -0.5..0.5 convention rather than cross-checked line by
- * line against the tessellation shader's own exact implementation, so
- * a small mismatch at a shape's precise boundary (a cone's exact taper
- * curve, a torus's exact tube radius) is possible and worth
- * confirming against a real render before this is trusted for
- * anything visually exacting.
+ * <p>{@code voxelize} returns null for an indestructible instance, for a shape drawn with none of its parts, for a scale that is zero or
+ * not a number, for a mesh with no usable triangle and for a type that has no surface of its own - {@link #whyNot} says which, in words
+ * for the log. twist and curve do nothing on the GPU today, so they do nothing here.
+ *
+ * <p>The canonical shapes are 1-unit shapes centred at the origin in their own LOCAL space (-0.5..+0.5 on each axis - the convention
+ * of instanceWorldSize, BinPacker and the rest of this codebase), tested at each candidate voxel's LOCAL-space centre before the cell
+ * is mapped into the octree's integer grid.
  */
 public final class PrimitiveVoxelizer {
 
@@ -49,11 +50,34 @@ public final class PrimitiveVoxelizer {
         public final VoxelOctree octree;
         public final float voxelWorldSize; // world-space edge length of one voxel - needed by a caller placing/rendering the result back in the scene
         public final org.joml.Vector3f gridOriginLocal; // add this to the ORIGINAL instance's own world position to correctly place voxel mesh vertices (which start at the octree grid's own (0,0,0) corner) back where the original primitive actually was - verified against a real placement test, not just derived on paper (see TestVoxelPlacement)
+        /**
+         * The instance that was voxelized (the one passed to voxelize: its scale is the world scale the grid was built at, its
+         * modifiers and parameters are what the voxels follow). What maps a voxel back onto the primitive's own surface -
+         * {@link VoxelTextureMapper}, for the texture colour of a voxel face - needs exactly this and {@link #gridOriginLocal}.
+         */
+        public final PbdInstance source;
+        /** The voxel size that was asked for; {@link #voxelWorldSize} is larger when the object was too big for it (see {@link #MAX_GRID_CELLS}). */
+        public final float requestedVoxelWorldSize;
 
-        Result(VoxelOctree octree, float voxelWorldSize, org.joml.Vector3f gridOriginLocal) {
+        Result(VoxelOctree octree, float voxelWorldSize, org.joml.Vector3f gridOriginLocal, PbdInstance source) {
+            this(octree, voxelWorldSize, gridOriginLocal, source, voxelWorldSize);
+        }
+
+        Result(VoxelOctree octree, float voxelWorldSize, org.joml.Vector3f gridOriginLocal, PbdInstance source, float requested) {
             this.octree = octree;
             this.voxelWorldSize = voxelWorldSize;
             this.gridOriginLocal = gridOriginLocal;
+            this.source = source;
+            this.requestedVoxelWorldSize = requested;
+        }
+
+        Result withRequested(float requested) {
+            return requested == requestedVoxelWorldSize ? this : new Result(octree, voxelWorldSize, gridOriginLocal, source, requested);
+        }
+
+        /** Whether the voxels are larger than asked for, because the object did not fit the grid at the size asked for. */
+        public boolean coarsened() {
+            return voxelWorldSize > requestedVoxelWorldSize * 1.0001f;
         }
     }
 
@@ -69,7 +93,14 @@ public final class PrimitiveVoxelizer {
      * (and the collectFilledUnitVoxels() list size that would come with
      * it) from a single instance a player could just walk up to and
      * press G on. */
-    private static final int MAX_OCTREE_DEPTH = 10;
+    static final int MAX_OCTREE_DEPTH = 10;
+
+    /**
+     * Voxels per axis a grid may span. The octree addresses 2^10 = 1024; an object that would need more is voxelized with larger voxels
+     * (voxelWorldSize of the result says which) instead of being cut to the middle 1024 voxels, which is what happened to a 20 m wall
+     * or a 100 m floor before: only its central 5 m were voxelized, and the rest of the object disappeared with the hit.
+     */
+    static final int MAX_GRID_CELLS = 1000;
 
     /** Returns null for an indestructible instance (never voxelized, by
      * design - see the roadmap this implements), for a mesh with no
@@ -93,8 +124,68 @@ public final class PrimitiveVoxelizer {
      * requested surface resolution is. */
     public static Result voxelize(PbdInstance instance, float targetVoxelWorldSize) {
         if (instance.indestructible) return null;
-        if ("mesh".equals(instance.type)) return voxelizeMesh(instance, targetVoxelWorldSize);
+        if (!(targetVoxelWorldSize > 0f) || !Float.isFinite(targetVoxelWorldSize)) return null;
+        // An object scaled by a negative number on an axis is its own mirror image there: it is voxelized as the object with the scale made
+        // positive, and the grid is turned over afterwards (GridMirror) - a cone with a negative height stands on its apex.
+        if (GridMirror.mirrors(instance.scale)) {
+            Result straight = voxelize(GridMirror.unmirrored(instance), targetVoxelWorldSize);
+            return straight == null ? null : GridMirror.of(straight, instance);
+        }
+        if ("mesh".equals(instance.type)) {
+            Result mesh = voxelizeMesh(instance, targetVoxelWorldSize);
+            return mesh == null ? null : mesh.withRequested(targetVoxelWorldSize); // so that coarsened() tells a mesh longer than the octree too
+        }
 
+        if (degenerateScale(instance)) return null;
+        ShapeEval eval = ShapeEval.of(instance);
+        if (eval == null) return null; // unknown/unsupported type - safer to produce nothing than a wrong guess
+        // A shape drawn with none of its parts (a cube with all six faces removed) has nothing to turn into voxels.
+        if (!"true".equals(instance.params.get("metadata")) && eval.parts().length == 0) return null;
+
+        // Every parameter the shape is DRAWN with is honoured, not just its type: cap (hollow cylinders and cones), faces (open cubes),
+        // smooth (rounded cubes), and the modifiers bend, shear and taper. A shape the analytic classifiers below can describe
+        // (a closed solid, at most tapered) goes through them - exact and cheap, the whole interior is bulk-filled; every other
+        // one is built from the surface the shader would draw (ForwardVoxelizer).
+        Result result = ForwardVoxelizer.handles(instance, eval)
+            ? ForwardVoxelizer.voxelize(instance, eval, targetVoxelWorldSize)
+            : voxelizeAnalytic(instance, targetVoxelWorldSize);
+        return result == null ? null : result.withRequested(targetVoxelWorldSize);
+    }
+
+    /**
+     * Whether the scale leaves nothing to voxelize: a component that is not a finite number, or zero on an axis that gives the shape an
+     * extent. A plane and a disc have no height of their own - their Y scale is read only by the modifiers (a bend lifts the sheet by it) -
+     * so a zero there flattens the sheet, which is still a sheet. A mesh is checked by its own voxelizer. The sign does not matter here
+     * (a negative scale is a mirror, see {@link GridMirror}).
+     */
+    static boolean degenerateScale(PbdInstance instance) {
+        float sx = instance.scale.x, sy = instance.scale.y, sz = instance.scale.z;
+        if (!(Float.isFinite(sx) && Float.isFinite(sy) && Float.isFinite(sz))) return true;
+        boolean flat = "plane".equals(instance.type) || "disc".equals(instance.type);
+        return sx == 0f || sz == 0f || (!flat && sy == 0f);
+    }
+
+    /**
+     * Why {@link #voxelize} gave nothing for this instance, in a few words for the log - the answer to "why was this not turned into
+     * cubes?". Only meaningful for an instance it did give nothing for (for any other the last answer, "thinner than a voxel", is
+     * meaningless). Reads the instance, changes nothing.
+     */
+    public static String whyNot(PbdInstance instance, float targetVoxelWorldSize) {
+        if (instance.indestructible) return "indestructible";
+        if (!(targetVoxelWorldSize > 0f) || !Float.isFinite(targetVoxelWorldSize)) return "no usable voxel size";
+        if ("mesh".equals(instance.type)) {
+            if (!MeshVoxelizer.isUsable(instance.meshData)) return "a mesh with no readable triangle";
+            return "a mesh with nothing left at this voxel size: every triangle is degenerate, or smaller than a voxel";
+        }
+        if (degenerateScale(instance)) return "a scale that is zero or not a number";
+        ShapeEval eval = ShapeEval.of(instance);
+        if (eval == null) return "type '" + instance.type + "' has no surface of its own";
+        if (!"true".equals(instance.params.get("metadata")) && eval.parts().length == 0) return "every face of it is removed";
+        return "thinner than a voxel";
+    }
+
+    /** The closed solids (and unmodified planes and discs), by region classification in canonical space - see voxelize. */
+    private static Result voxelizeAnalytic(PbdInstance instance, float targetVoxelWorldSize) {
         float sx = instance.scale.x, sy = instance.scale.y, sz = instance.scale.z;
         boolean zeroVolume = "plane".equals(instance.type) || "disc".equals(instance.type);
         // Zero-volume primitives are flat in Y (see voxelizePlane/
@@ -105,43 +196,37 @@ public final class PrimitiveVoxelizer {
         // rather than either a needle-thin sliver or an unreasonably
         // thick one relative to its own footprint.
         float effectiveSy = sy;
-        if (zeroVolume) {
-            effectiveSy = Math.max(sx, sz) * MIN_THICKNESS_FRACTION;
-        }
 
-        // A REAL, confirmed bug this turn: the grid below used to be
-        // sized from sx/sz alone - the instance's own UNMODIFIED scale -
-        // with no allowance for a modifier making the final (visible)
-        // shape extend further out than that. taper's own applyTaper
-        // scales X/Z by mix(bottomScale, topScale, y+0.5): whichever of
-        // the two ends is furthest from 1.0 is exactly how far past the
-        // canonical radius that end reaches. A WIDENING taper
-        // (topScale=2, say) got silently clipped to the grid's own,
-        // too-small extent - reproduced directly: 77% of the exact
-        // frustum volume instead of the correct 100% (see
-        // RegressionTaperWide). A narrowing-only taper (every prior
-        // test here, including the shipped bottomScale=1/topScale=0.3
-        // case) never exceeds 1.0, so max(...,1f) below leaves gridX/
-        // gridZ, and every test that already passed, completely
-        // unchanged - this widens the grid ONLY when a modifier could
-        // actually need the extra room, never shrinks it. bend is a
-        // separate, larger case (its own extent depends on the whole
-        // arc, not one linear factor) and is NOT covered by this -
-        // still an open item, see the roadmap.
+        // The grid must have room for the shape as the taper leaves it: applyTaper scales X/Z by mix(bottomScale, topScale, y+0.5), so
+        // whichever of the two ends is furthest from 1.0 is how far past the canonical radius that end reaches. A WIDENING taper
+        // (topScale=2, say) used to be clipped to the grid of the unmodified scale (77% of the exact frustum volume instead of 100%,
+        // see RegressionTaperWide). A narrowing-only taper never exceeds 1.0, so max(..., 1f) leaves the grid as it was: it is widened
+        // ONLY when a taper needs the room. (A bend or a shear never reaches this method: the closed solids that have one go through
+        // ForwardVoxelizer, which sizes its grid from the surface itself - see ForwardVoxelizer.handles.)
         float taperMaxScale = 1f;
         for (PbdModifier mod : instance.modifiers) {
             if ("taper".equals(mod.type)) {
-                float bottomScale = mod.getFloat("bottomScale", 1f);
-                float topScale = mod.getFloat("topScale", 1f);
+                float bottomScale = ModifierParams.bottomScale(mod);
+                float topScale = ModifierParams.topScale(mod);
                 taperMaxScale = Math.max(taperMaxScale, Math.max(Math.abs(bottomScale), Math.abs(topScale)));
             }
         }
         float effectiveSx = sx * taperMaxScale;
         float effectiveSz = sz * taperMaxScale;
 
+        // The grid must fit the octree: an object larger than MAX_GRID_CELLS voxels at the size asked for is voxelized with larger
+        // voxels (it used to be cut to the middle 1024 voxels, and the rest of the object vanished with the hit).
+        float longestFlat = Math.max(zeroVolume ? 0f : effectiveSy, Math.max(effectiveSx, effectiveSz));
+        if (longestFlat <= 1e-6f && !zeroVolume) return null; // degenerate (zero-scale) instance - nothing to voxelize
+        float voxelWorldSize = Math.max(targetVoxelWorldSize, longestFlat / MAX_GRID_CELLS);
+        if (zeroVolume) {
+            // A plane or a disc encloses nothing: it is given a thickness (a fraction of its larger side, within limits), in whole layers of voxels, exactly
+            // like the same sheet under a modifier (ForwardVoxelizer.slabLayers): the thickness of a leaf does not change because a shear that does nothing
+            // to it was added.
+            effectiveSy = (float) (ForwardVoxelizer.slabLayers(sx, sz, voxelWorldSize) * voxelWorldSize);
+        }
         float longestAxis = Math.max(effectiveSy, Math.max(effectiveSx, effectiveSz));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-scale) instance - nothing to voxelize
-        float voxelWorldSize = targetVoxelWorldSize;
 
         int gridX = Math.max(1, Math.round(effectiveSx / voxelWorldSize));
         int gridY = Math.max(1, Math.round(effectiveSy / voxelWorldSize));
@@ -170,33 +255,44 @@ public final class PrimitiveVoxelizer {
         // which axis or how thin the object is on it.
         int offX = (gridSize - gridX) / 2, offY = (gridSize - gridY) / 2, offZ = (gridSize - gridZ) / 2;
 
+        final ShapeVolume cubeShape = ShapeVolume.of(instance);
         RegionClassifier baseClassifier = switch (instance.type) {
             case "cylinder" -> PrimitiveVoxelizer::classifyCylinder;
             case "cone" -> PrimitiveVoxelizer::classifyCone;
             case "torus" -> PrimitiveVoxelizer::classifyTorus;
             case "sphere" -> PrimitiveVoxelizer::classifySphere;
-            default -> null; // cube/disc/plane use their own dedicated voxelize* below, not this classifier path
+            // a cube: its edges may be rounded (smooth) - the Minkowski sum of a box and an ellipsoid, exact - and a taper acts on it like on any shape
+            case "cube" -> (x0, y0, z0, x1, y1, z1) -> cubeShape.classify(x0, y0, z0, x1, y1, z1);
+            default -> null; // disc/plane use their own dedicated voxelize* below, not this classifier path
         };
+        boolean plainCube = "cube".equals(instance.type) && taperMaxScale == 1f && !cubeShape.isRounded() && !hasTaper(instance);
 
         switch (instance.type) {
-            case "cube" -> voxelizeCube(octree, offX, offY, offZ, gridX, gridY, gridZ);
+            case "cube" -> {
+                if (plainCube) {
+                    voxelizeCube(octree, offX, offY, offZ, gridX, gridY, gridZ);
+                } else {
+                    RegionClassifier classifier = baseClassifier;
+                    for (PbdModifier mod : instance.modifiers) {
+                        if ("taper".equals(mod.type)) {
+                            classifier = wrapWithTaper(classifier, ModifierParams.bottomScale(mod), ModifierParams.topScale(mod));
+                        }
+                    }
+                    rasterizeAdaptive(octree, classifier, offX, offY, offZ, gridX, gridY, gridZ, 0, 0, 0,
+                        gridSize, gridSize, gridSize,
+                        -0.5f * taperMaxScale, -0.5f, -0.5f * taperMaxScale,
+                        taperMaxScale, 1f, taperMaxScale);
+                }
+            }
             case "cylinder", "cone", "torus", "sphere" -> {
-                // taper is the only modifier this voxelizer accounts
-                // for so far (see this method's own PbdModifier lookup
-                // below and the roadmap for bend/twist/curve, not yet
-                // attempted - bend's own forward transform has no
-                // closed-form inverse, needing either a numerical
-                // solver or a materially larger effort to get right;
-                // taper's does, since Y is never touched by it, so
-                // scale is a direct function of a region's own Y range
-                // alone). Wrapped here, once, rather than per-case,
-                // now that every rasterizeAdaptive call site shares
-                // one classifier variable.
+                // taper is the only modifier this classifier path accounts for: it has a closed-form inverse (Y is never touched by it, so
+                // the scale is a direct function of a region's own Y range alone). A bend has none - the closed solids that are bent or
+                // sheared are voxelized from their surface by ForwardVoxelizer (see ForwardVoxelizer.handles); twist and curve do nothing on
+                // the GPU. Wrapped here, once, rather than per-case, now that every rasterizeAdaptive call site shares one classifier variable.
                 RegionClassifier classifier = baseClassifier;
                 for (PbdModifier mod : instance.modifiers) {
                     if ("taper".equals(mod.type)) {
-                        classifier = wrapWithTaper(classifier,
-                            mod.getFloat("bottomScale", 1f), mod.getFloat("topScale", 1f));
+                        classifier = wrapWithTaper(classifier, ModifierParams.bottomScale(mod), ModifierParams.topScale(mod));
                     }
                 }
                 // 18-arg overload, not the plain 11-arg default (localOrigin
@@ -270,7 +366,14 @@ public final class PrimitiveVoxelizer {
             -offX * voxelWorldSize - effectiveSx / 2f,
             -offY * voxelWorldSize - effectiveSy / 2f,
             -offZ * voxelWorldSize - effectiveSz / 2f);
-        return new Result(octree, voxelWorldSize, gridOriginLocal);
+        return new Result(octree, voxelWorldSize, gridOriginLocal, instance);
+    }
+
+    private static boolean hasTaper(PbdInstance instance) {
+        for (PbdModifier mod : instance.modifiers) {
+            if ("taper".equals(mod.type)) return true;
+        }
+        return false;
     }
 
     /** -1 = the whole region is OUTSIDE the shape, +1 = the whole region
@@ -601,13 +704,18 @@ public final class PrimitiveVoxelizer {
      * NO triangle's AABB overlaps a region at all is it safe to fall
      * back to the ray-parity inside/outside test - correct only for a
      * closed (watertight) mesh, which most real single-object game
-     * props are, but not guaranteed by the format; an open/non-
-     * manifold mesh can produce a wrong (typically: entirely empty,
-     * since a ray from outside a leaky mesh tends to see an even
-     * number of crossings) result rather than crashing. */
+     * props are but the format does not guarantee. That is why a mesh
+     * is first tested for being closed ({@link MeshVoxelizer#isClosed}):
+     * one that is not (a single triangle, a quad, a sheet, a cup made of
+     * one surface) has no inside for a ray to find and is voxelized by
+     * its SURFACE instead, thickened into a wall
+     * ({@link MeshVoxelizer#voxelizeThin}). A mesh whose arrays cannot be
+     * read (an index outside the vertices, a NaN) is refused (null). A
+     * mesh longer than the octree addresses is voxelized with larger
+     * voxels, whole - the result says which size it used. */
     private static Result voxelizeMesh(PbdInstance instance, float targetVoxelWorldSize) {
         PbdMeshData mesh = instance.meshData;
-        if (mesh == null || mesh.indices.length < 3) return null; // no geometry to voxelize at all
+        if (!MeshVoxelizer.isUsable(mesh)) return null; // no geometry to voxelize at all, or indices/coordinates that cannot be read
 
         float[] pos = mesh.positions;
         float meshMinX = Float.MAX_VALUE, meshMinY = Float.MAX_VALUE, meshMinZ = Float.MAX_VALUE;
@@ -628,12 +736,16 @@ public final class PrimitiveVoxelizer {
         float extentZ = (meshMaxZ - meshMinZ) * sz;
         float longestAxis = Math.max(extentX, Math.max(extentY, extentZ));
         if (longestAxis <= 1e-6f) return null; // degenerate (zero-size) mesh
-        // A mesh with no thickness on some axis (a single quad, a decal) encloses no volume:
-        // there is no inside to find, and the grid would degenerate (a zero-height cell range
-        // that came out as a block more than a metre thick). Nothing solid to destroy.
-        if (Math.min(extentX, Math.min(extentY, extentZ)) < longestAxis * 1e-4f) return null;
+        // A mesh with no thickness on some axis (a single quad, a decal), or one that is not closed (a sheet, a cloth, a cup
+        // made of one surface), encloses no volume: there is no inside to find - the ray-parity test would answer at random, and
+        // on a flat mesh the grid would degenerate (a zero-height cell range that came out as a block more than a metre thick).
+        // Its SURFACE is what gets voxelized, thickened into a wall (MeshVoxelizer).
+        if (Math.min(extentX, Math.min(extentY, extentZ)) < longestAxis * 1e-4f || !MeshVoxelizer.isClosed(mesh)) {
+            return MeshVoxelizer.voxelizeThin(instance, targetVoxelWorldSize);
+        }
 
-        float voxelWorldSize = targetVoxelWorldSize;
+        // A mesh longer than the octree can address in voxels is voxelized with larger ones, whole, not cut to its middle.
+        float voxelWorldSize = Math.max(targetVoxelWorldSize, longestAxis / MAX_GRID_CELLS);
         // Local-space voxel size (before instance.scale) - the grid
         // itself is sized/walked in the mesh's own local units, same
         // as every other voxelize* method works in the primitive's own
@@ -685,7 +797,7 @@ public final class PrimitiveVoxelizer {
             meshMinX * sx - offX * voxelWorldSize,
             meshMinY * sy - offY * voxelWorldSize,
             meshMinZ * sz - offZ * voxelWorldSize);
-        return new Result(octree, voxelWorldSize, gridOriginLocal);
+        return new Result(octree, voxelWorldSize, gridOriginLocal, instance);
     }
 
     /** -1/0/+1, same contract as every other classifyX above, but
@@ -698,7 +810,7 @@ public final class PrimitiveVoxelizer {
                                            float meshMaxX, float meshMaxY, float meshMaxZ,
                                            float minX, float minY, float minZ,
                                            float maxX, float maxY, float maxZ) {
-        for (int i = 0; i < indices.length; i += 3) {
+        for (int i = 0; i + 2 < indices.length; i += 3) { // whole triangles only: a stray trailing index is not one
             int i0 = indices[i] * 3, i1 = indices[i + 1] * 3, i2 = indices[i + 2] * 3;
             if (triangleIntersectsAABB(
                     pos[i0], pos[i0 + 1], pos[i0 + 2],
@@ -735,7 +847,7 @@ public final class PrimitiveVoxelizer {
         py += span * 1.371e-5f;
         pz += span * 0.826e-5f;
         int crossings = 0;
-        for (int i = 0; i < indices.length; i += 3) {
+        for (int i = 0; i + 2 < indices.length; i += 3) { // whole triangles only: a stray trailing index is not one
             int i0 = indices[i] * 3, i1 = indices[i + 1] * 3, i2 = indices[i + 2] * 3;
             if (rayTriangleCrossesPositiveX(px, py, pz, rayEndX,
                     pos[i0], pos[i0 + 1], pos[i0 + 2],

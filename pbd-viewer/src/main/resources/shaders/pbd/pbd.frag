@@ -5,7 +5,8 @@ struct PbdMaterialGpu {
     float shininess;        // Blinn-Phong exponent: low = matte, high = sharp highlight
     float specularStrength;
     float textureLayer;     // -1 if this material has no diffuse texture, else its layer in materialTextures
-    float uvScale;          // tiling repeat factor across the surface, 1.0 = no tiling
+    float uvScaleU;         // tiling repeat factor, U axis. 1.0 = no tiling. Split from a single uvScale (which used to scale both axes identically) since a non-square texture on a non-square surface needs independent control per axis - see PBD_FORMAT_SPEC.md's own note on this
+    float uvScaleV;         // tiling repeat factor, V axis
     float normalMapLayer;   // -1 if no normal map, else its layer in normalTextures
     float roughnessMapLayer; // -1 if no roughness map, else its layer in roughnessTextures
     float reflectivity;     // 0 = no reflection, 1 = fully mirror-like (blended with the diffuse/specular result)
@@ -16,6 +17,30 @@ struct PbdMaterialGpu {
 
 layout(std430, binding = 4) readonly buffer MaterialBuffer {
     PbdMaterialGpu materials[];
+};
+
+// Layout must match PbdRenderer.uploadLights's own byte packing exactly
+// (see that method's own stride comment for the std430 reasoning) -
+// position+range, color+intensity, and spotDirection+spotCosAngle are
+// each a vec3 immediately followed by one float specifically so they
+// pack with no implicit padding between them (a vec3 alone pads to 16
+// bytes regardless, so the trailing float just fills that same slot
+// rather than starting a new one) - isSpot's own int then needs 12
+// bytes of explicit padding after it to reach the required 64-byte
+// stride, matching what Java actually writes.
+struct PbdLightGpu {
+    vec3 position;
+    float range;
+    vec3 color;
+    float intensity;
+    vec3 spotDirection;
+    float spotCosAngle;
+    int isSpot;
+    float _pad0, _pad1, _pad2;
+};
+
+layout(std430, binding = 5) readonly buffer LightBuffer {
+    PbdLightGpu lights[];
 };
 
 layout(binding = 0) uniform sampler2DArray materialTextures;
@@ -32,6 +57,7 @@ layout(location = 5) in vec2 vUV;
 // this explicitly).
 layout(location = 0) uniform vec3 cameraPos;
 layout(location = 6) uniform vec3 lightDir;
+layout(location = 7) uniform int lightCount; // how many of LightBuffer's own entries are real - see PbdRenderer.uploadLights's own "at least 1, possibly padding" doc; 0 is the normal case for a scene with no light-type instances at all
 
 out vec4 fragColor;
 
@@ -75,7 +101,7 @@ vec3 applyNormalMap(vec3 N, vec3 worldPos, vec2 uv, float layer) {
 
 void main() {
     PbdMaterialGpu mat = materials[vMaterialID];
-    vec2 uv = vUV * mat.uvScale;
+    vec2 uv = vUV * vec2(mat.uvScaleU, mat.uvScaleV);
 
     vec3 n = normalize(vNormal);
     vec3 missingMapTint = vec3(0.0);
@@ -150,6 +176,40 @@ void main() {
     float skyFactor = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
     vec3 ambient = mix(vec3(0.28, 0.25, 0.22), vec3(0.40, 0.43, 0.50), skyFactor);
     vec3 color = base * (ambient + 0.75 * diffuse) + vec3(specular);
+
+    // Point/spot lights (light-type instances - see PbdRenderer.
+    // uploadLights) - additive on top of the sun/ambient terms above,
+    // same Blinn-Phong shape (diffuse + specular), with a smooth
+    // distance falloff (1 at the light's own position, 0 at its range)
+    // and, for a spot, an angular falloff between the cone's full
+    // brightness and its edge rather than a hard cutoff (a hard edge
+    // reads as an obviously synthetic circle of light; smoothing it
+    // over the outer ~20% of the cone is the standard fix).
+    for (int i = 0; i < lightCount; i++) {
+        PbdLightGpu light = lights[i];
+        vec3 toLightVec = light.position - vWorldPos;
+        float dist = length(toLightVec);
+        if (dist >= light.range || dist < 1e-5) continue;
+        vec3 toPointLight = toLightVec / dist;
+
+        float distFalloff = 1.0 - smoothstep(0.0, light.range, dist);
+        float angleFalloff = 1.0;
+        if (light.isSpot == 1) {
+            float cosAngleToPoint = dot(-toPointLight, light.spotDirection);
+            float outerCos = light.spotCosAngle;
+            float innerCos = mix(outerCos, 1.0, 0.2); // inner 80% of the cone at full brightness, outer 20% eased to zero - see this block's own doc
+            angleFalloff = smoothstep(outerCos, innerCos, cosAngleToPoint);
+        }
+        if (angleFalloff <= 0.0) continue;
+
+        vec3 lightHalfVec = normalize(toPointLight + toEye);
+        float lightDiffuse = max(dot(n, toPointLight), 0.0);
+        float lightSpecAngle = max(dot(n, lightHalfVec), 0.0);
+        float lightSpecular = pow(lightSpecAngle, effShininess) * effSpecular;
+
+        float atten = distFalloff * angleFalloff * light.intensity;
+        color += light.color * (base * lightDiffuse + vec3(lightSpecular)) * atten;
+    }
 
     if (mat.reflectivity > 0.0) {
         vec3 reflectDir = reflect(-toEye, n);

@@ -2,6 +2,8 @@ package pbd.classicmesh;
 
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
+import pbd.format.TextureTurn;
 import pbd.render.FlyCamera;
 import pbd.render.ShaderProgram;
 
@@ -134,7 +136,8 @@ public final class ClassicMeshRenderer implements AutoCloseable {
         uploadedBytes = mesh.byteSize();
     }
 
-    /** Loads texturePath as a single 2D texture and binds it for
+    /** Loads texturePath as a single 2D texture, turned by quarterTurns quarter turns
+     * (counter-clockwise: the material's uvRotation, see pbd.format.MaterialUv.quarterTurns; 0 for none), and binds it for
      * subsequent render() calls - only meaningful when the mesh this
      * renderer was built from has real UVs (mesh.hasUv); called on one
      * without them does nothing useful (the shader would still sample
@@ -145,7 +148,7 @@ public final class ClassicMeshRenderer implements AutoCloseable {
      * baseColor, same as never calling this) on any load failure -
      * consistent with the rest of this project's "a missing/bad texture
      * shouldn't crash rendering" posture (see MaterialTextureArray). */
-    public void setTexture(Path texturePath) {
+    public void setTexture(Path texturePath, int quarterTurns) {
         if (!meshHasUv) {
             System.err.println("[ClassicMeshRenderer] setTexture called on a mesh with no UVs - ignoring (nothing meaningful to map onto)");
             return;
@@ -159,15 +162,35 @@ public final class ClassicMeshRenderer implements AutoCloseable {
                 return;
             }
             try {
-                if (textureGlId != -1) glDeleteTextures(textureGlId); // replacing a previously-set texture - not leaking the old one
-                textureGlId = glGenTextures();
-                glBindTexture(GL_TEXTURE_2D, textureGlId);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w.get(0), h.get(0), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                int width = w.get(0), height = h.get(0);
+                ByteBuffer upload = pixels;
+                ByteBuffer turnedCopy = null;
+                if (TextureTurn.normalize(quarterTurns) != 0) {
+                    // The material's uvRotation (MaterialUv): the picture is turned here, once, in plain Java (TextureTurn, the very
+                    // code the tessellation shader's texture array and the voxels of a shot object are fed with), and what GL gets is
+                    // the turned picture - the shader of this renderer reads it exactly as it read the unturned one.
+                    byte[] bytes = new byte[width * height * 4];
+                    pixels.get(0, bytes);
+                    TextureTurn.Image turned = TextureTurn.rotate(bytes, width, height, quarterTurns);
+                    turnedCopy = MemoryUtil.memAlloc(turned.rgba().length);
+                    turnedCopy.put(turned.rgba()).flip();
+                    upload = turnedCopy;
+                    width = turned.width();
+                    height = turned.height();
+                }
+                try {
+                    if (textureGlId != -1) glDeleteTextures(textureGlId); // replacing a previously-set texture - not leaking the old one
+                    textureGlId = glGenTextures();
+                    glBindTexture(GL_TEXTURE_2D, textureGlId);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, upload);
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                } finally {
+                    if (turnedCopy != null) MemoryUtil.memFree(turnedCopy);
+                }
             } finally {
                 STBImage.stbi_image_free(pixels);
             }

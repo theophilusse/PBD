@@ -5,6 +5,7 @@ import org.joml.Quaterniond;
 import org.joml.Quaternionf;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
+import pbd.format.BreakProfile;
 import pbd.format.PbdInstance;
 
 import java.util.ArrayList;
@@ -41,6 +42,16 @@ import java.util.function.Consumer;
  * voxel mesh, the rest become rigid bodies (RigidDebris) that fall under
  * {@link #update}, landing on the scene's floor, on the remains, and on the
  * boxes of nearby cubes and cylinders.
+ *
+ * THE BREAK. Before that split, {@link VoxelFracture} looks at what the crater left: a connection narrower than the
+ * material holds (the material's {@code breakWidth}, see {@link BreakProfile}) does not hold - it shatters into splinters
+ * and the piece it joined is no longer joined, so the whole piece comes away instead of balancing on a sliver. The
+ * material decides, never the primitive: two posts of different materials break differently under the same shot.
+ *
+ * THE DEBRIS. Nothing that a hit takes out simply vanishes. The cubes of the crater, the crumbs too small to fall as pieces
+ * and, when a connection broke, the splinters are thrown up as particles ({@link ParticleSystem}, thrown by
+ * {@link DebrisEmitter}) out of the hole, with the count, size, speed, life and colour the material's profile gives, and
+ * they fall and bounce on the same floor, boxes and remains the pieces do.
  *
  * NOTHING IS CACHED BETWEEN HITS beyond the live state itself: the voxel
  * grid is rebuilt from the instance on every first hit, the scene's floor
@@ -88,24 +99,65 @@ public final class DestructionWorld<M> {
     /** A collider a piece starts out embedded in by more than this (world units) is ignored for that piece. */
     static final double EMBEDDED_TOLERANCE = 0.01;
     /** A hit wakes (and re-evaluates the supports of) resting chunks within this distance of where it landed. */
-    static final double WAKE_RADIUS = 2.0;
+    public static final double WAKE_RADIUS = 2.0;
 
     // ------------------------------------------------------------------
     // Public types
     // ------------------------------------------------------------------
 
-    /** How the faces of one destroyed instance are coloured - shared by its remains and every chunk that breaks off it, so the texture runs on across a break. */
+    /**
+     * How one destroyed instance LOOKS and BREAKS - shared by its remains and every chunk that breaks off it, so the texture runs on across a
+     * break and a piece of oak keeps breaking like oak: the colour of its faces, and the profile of its material (what a hit throws up, when
+     * a piece comes away whole).
+     */
     public static final class Style {
+        /** The colour at a point, whichever face it is on: what a chip of debris takes (see {@link #faceColor} for the faces of the mesh). */
         public final BiFunction<int[], float[], float[]> colorFn;
+        /** The colour of a corner of a face, knowing which way the face looks - what the mesh of the remains and of every piece is coloured with. */
+        public final VoxelMeshBuilder.FaceColor faceColor;
         public final float[] fallback;
+        /** How the material breaks; never null. */
+        public final BreakProfile profile;
+        /**
+         * Whether the colour changes from one voxel of the skin to the next (a texture), so that a face of a big box must be built from
+         * voxel-sized cells with a colour each ({@link VoxelMeshBuilder#buildMeshWithColor(List, float, VoxelMeshBuilder.FaceColor, boolean, boolean)}).
+         * A flat colour needs no more than one quad.
+         */
+        public final boolean perVoxelColour;
 
         public Style(BiFunction<int[], float[], float[]> colorFn, float[] fallback) {
+            this(colorFn, fallback, BreakProfile.GENERIC);
+        }
+
+        public Style(BiFunction<int[], float[], float[]> colorFn, float[] fallback, BreakProfile profile) {
+            this(VoxelMeshBuilder.ignoringFace(colorFn), colorFn, fallback, profile, false);
+        }
+
+        /** A colour that depends on the face; the point-only form (for debris) asks it with no face. */
+        public Style(VoxelMeshBuilder.FaceColor faceColor, float[] fallback, BreakProfile profile) {
+            this(faceColor, (voxel, pos) -> faceColor.colorOf(voxel, pos, 0f, 0f, 0f), fallback, profile, false);
+        }
+
+        private Style(VoxelMeshBuilder.FaceColor faceColor, BiFunction<int[], float[], float[]> colorFn, float[] fallback, BreakProfile profile,
+                      boolean perVoxelColour) {
+            this.faceColor = faceColor;
             this.colorFn = colorFn;
             this.fallback = fallback;
+            this.profile = profile != null ? profile : BreakProfile.GENERIC;
+            this.perVoxelColour = perVoxelColour;
+        }
+
+        /** A style whose colour is a picture on the skin: every voxel of the skin has a colour of its own. */
+        public static Style textured(VoxelMeshBuilder.FaceColor faceColor, float[] fallback, BreakProfile profile) {
+            return new Style(faceColor, (voxel, pos) -> faceColor.colorOf(voxel, pos, 0f, 0f, 0f), fallback, profile, true);
         }
 
         public static Style flat(float[] color) {
-            return new Style((voxel, worldPos) -> color, color);
+            return flat(color, BreakProfile.GENERIC);
+        }
+
+        public static Style flat(float[] color, BreakProfile profile) {
+            return new Style((voxel, worldPos) -> color, color, profile);
         }
     }
 
@@ -120,7 +172,7 @@ public final class DestructionWorld<M> {
         void hideInstance(int index);
 
         /** How this instance's voxel faces are coloured. voxelized is a copy carrying the world scale the grid was built at. */
-        Style styleFor(PbdInstance original, PbdInstance voxelized, int gridSize, float voxelWorldSize);
+        Style styleFor(PbdInstance original, PbdInstance voxelized, PrimitiveVoxelizer.Result grid);
 
         /** A drawable mesh for these cubes (mesh space = grid coordinates times voxelWorldSize), or null if it cannot be built. */
         M buildMesh(List<int[]> entries, float voxelWorldSize, Style style);
@@ -132,8 +184,16 @@ public final class DestructionWorld<M> {
     /** The never-destroyed instance the bounding-box ray test ({@link #findFresh}) found: its index, the world distance to the box, and the hit point in the instance's own local space (the canonical -0.5..0.5 box for a primitive, the mesh's own units for a mesh). */
     public record Fresh(int index, double distance, Vector3f localHit) {}
 
-    /** hit: whether anything was destroyed or further carved (the cue for the destruction SFX). message: a ready-to-print log line. */
-    public record Outcome(boolean hit, String message) {}
+    /**
+     * hit: whether anything was destroyed or further carved (the cue for the destruction SFX). message: a ready-to-print log line.
+     * fractured: a connection too narrow to hold broke in this hit (splinters were thrown up). breakSound: the sound the material of
+     * the thing hit parts with (a file of resources/sounds) when it fractured, else null.
+     */
+    public record Outcome(boolean hit, String message, boolean fractured, String breakSound) {
+        public Outcome(boolean hit, String message) {
+            this(hit, message, false, null);
+        }
+    }
 
     /** What is left of one destroyed instance: the cubes still ATTACHED to it, where its grid sits, and what a later hit needs to decide what stays. */
     public static final class Remains<M> {
@@ -145,12 +205,15 @@ public final class DestructionWorld<M> {
         final boolean grounded;
         final double downX, downY, downZ;
         final double bottomProjection;
+        /** The face of the instance as it was whole (see {@link SlabOpenings}): what {@link #openingsOf} compares the remains with. */
+        final SlabOpenings.Footprint footprint;
         private M mesh;
         private List<int[]> entries;
         private VoxelSolid solid;
 
         Remains(int instanceIndex, Vector3f gridOrigin, float voxelWorldSize, Style style, boolean grounded,
                 double downX, double downY, double downZ, double bottomProjection, List<int[]> entries) {
+            this.footprint = SlabOpenings.Footprint.of(entries); // entries is still the whole instance here
             this.instanceIndex = instanceIndex;
             this.gridOrigin = gridOrigin;
             this.voxelWorldSize = voxelWorldSize;
@@ -205,8 +268,11 @@ public final class DestructionWorld<M> {
     private final List<PbdInstance> instances;
     private final Host<M> host;
     private final Map<Integer, Remains<M>> remains = new HashMap<>();
+    /** What was seen through an instance that a hit consumed whole (no remains any more): its face as it stood, nothing in the way. */
+    private final Map<Integer, SlabOpenings.Report> consumed = new HashMap<>();
     private final List<Chunk<M>> chunks = new ArrayList<>();
-    private int serial; // counts hits; seeds each piece's tumble so a replay is identical
+    private final ParticleSystem particles = new ParticleSystem();
+    private int serial; // counts hits; seeds each piece's tumble and each burst of particles so a replay is identical
 
     public DestructionWorld(List<PbdInstance> instances, Host<M> host) {
         this.instances = instances;
@@ -214,15 +280,50 @@ public final class DestructionWorld<M> {
     }
 
     public Collection<Remains<M>> remains() { return Collections.unmodifiableCollection(remains.values()); }
+
+    /** Whether something of instance {@code index} still stands as voxels (a hit turned it into cubes and some are still attached). A whole instance, and one the hits consumed entirely, have none. */
+    public boolean hasRemains(int index) { return remains.containsKey(index); }
     public List<Chunk<M>> chunks() { return Collections.unmodifiableList(chunks); }
-    public boolean isEmpty() { return remains.isEmpty() && chunks.isEmpty(); }
+    /** The particles the hits threw up: what the renderer draws, and what {@link #update} moves. */
+    public ParticleSystem particles() { return particles; }
+    /** Whether the world holds nothing at all: no remains of a destroyed instance, no piece, no particle. */
+    public boolean isEmpty() { return remains.isEmpty() && chunks.isEmpty() && particles.isEmpty(); }
+
+    /**
+     * The instances any hit has reached, in ascending order: the ones whose voxels still stand ({@link #hasRemains}) and the ones the
+     * hits consumed entirely or destroyed outright. Each of them has a report ({@link #openingsOf}); an instance no hit reached is not
+     * listed. It is what a door is judged by (pbd.pz.DoorParts): the few instances that were hit are walked up to the door they hang
+     * from, instead of every instance of the scene being walked down from every door.
+     */
+    public int[] alteredInstances() {
+        java.util.TreeSet<Integer> hit = new java.util.TreeSet<>(remains.keySet());
+        hit.addAll(consumed.keySet());
+        int[] out = new int[hit.size()];
+        int k = 0;
+        for (int index : hit) out[k++] = index;
+        return out;
+    }
+
+    /**
+     * Where one can look through instance {@code index} now, measured on the face of the slab it was before the first hit
+     * ({@link SlabOpenings}): null when no hit ever reached it (it is whole), else the report - integrity, widest gap - of what
+     * is left attached to it. A piece that broke away counts as gone from the instance; an instance the hits consumed entirely
+     * reports its whole face as open.
+     */
+    public SlabOpenings.Report openingsOf(int index) {
+        Remains<M> r = remains.get(index);
+        if (r != null) return SlabOpenings.measure(r.footprint, r.entries(), r.voxelWorldSize);
+        return consumed.get(index);
+    }
 
     /** Frees every mesh and forgets everything (scene switch / shutdown). */
     public void clear() {
         for (Remains<M> r : remains.values()) if (r.mesh != null) host.closeMesh(r.mesh);
         remains.clear();
+        consumed.clear();
         for (Chunk<M> c : chunks) host.closeMesh(c.mesh);
         chunks.clear();
+        particles.clear();
     }
 
     // ------------------------------------------------------------------
@@ -236,15 +337,24 @@ public final class DestructionWorld<M> {
     private record GridHit(double distance, Vector3d impactGrid, Vector3d directionGrid) {}
 
     /**
-     * Rotation of a world matrix with the scale divided out. Same as
-     * PbdRenderer's own helper (JOML's getNormalizedRotation() returns
-     * something that is not even a unit quaternion for strongly
-     * non-uniform scale - confirmed on a real 27:1 door).
+     * Rotation of a world matrix with the scale divided out. The one definition for the whole program (PbdRenderer's helper, which
+     * container-item picking and the drawing of destroyed objects use, calls this one): JOML's getNormalizedRotation() returns
+     * something that is not even a unit quaternion for strongly non-uniform scale - confirmed on a real 27:1 door - so the three
+     * axes are normalized first.
+     *
+     * <p>A matrix that MIRRORS (see {@link #mirrors}) is not a rotation times a scale with positive sizes. It is one with the
+     * scale negative on all three axes: the rotation returned for it is the one of the matrix with its three axes turned over,
+     * and {@link #withWorldScale} gives the scale its three negative signs, so that {@code rotation * scale} is the matrix again.
      */
     public static Quaternionf rotationOf(Matrix4f m) {
         Vector3f colX = new Vector3f(m.m00(), m.m01(), m.m02()).normalize();
         Vector3f colY = new Vector3f(m.m10(), m.m11(), m.m12()).normalize();
         Vector3f colZ = new Vector3f(m.m20(), m.m21(), m.m22()).normalize();
+        if (colX.dot(colY.cross(colZ, new Vector3f())) < 0f) {
+            colX.negate();
+            colY.negate();
+            colZ.negate();
+        }
         Matrix4f rotOnly = new Matrix4f(
             colX.x, colX.y, colX.z, 0,
             colY.x, colY.y, colY.z, 0,
@@ -297,19 +407,32 @@ public final class DestructionWorld<M> {
     }
 
     /**
+     * Whether a world matrix mirrors: its three axes form a left-handed set (a negative scale on one or three axes, on the instance
+     * or on a parent). Such a matrix cannot be a rotation and a scale with positive sizes - see {@link #rotationOf}.
+     */
+    public static boolean mirrors(Matrix4f m) {
+        Vector3f colX = new Vector3f(m.m00(), m.m01(), m.m02());
+        Vector3f colY = new Vector3f(m.m10(), m.m11(), m.m12());
+        Vector3f colZ = new Vector3f(m.m20(), m.m21(), m.m22());
+        return colX.dot(colY.cross(colZ, new Vector3f())) < 0f;
+    }
+
+    /**
      * A copy of inst whose scale is the instance's actual WORLD scale (a
      * parent's scale included) - what the voxelizer has to use, because the
      * voxel mesh is placed with rotation and translation only. Equal to
      * inst.scale for a top-level instance. Null for a degenerate (zero or
-     * NaN) scale.
+     * NaN) scale. For a matrix that mirrors the scale is negative on all three axes
+     * (the voxelizer reflects its grid, and {@link #rotationOf} is the rotation that goes with it).
      */
-    static PbdInstance withWorldScale(PbdInstance inst, Matrix4f world) {
+    public static PbdInstance withWorldScale(PbdInstance inst, Matrix4f world) {
         float sx = new Vector3f(world.m00(), world.m01(), world.m02()).length();
         float sy = new Vector3f(world.m10(), world.m11(), world.m12()).length();
         float sz = new Vector3f(world.m20(), world.m21(), world.m22()).length();
         if (!(sx > 1e-6f && sy > 1e-6f && sz > 1e-6f)) return null;
+        float sign = mirrors(world) ? -1f : 1f;
         PbdInstance copy = new PbdInstance(inst.id, inst.type);
-        copy.scale.set(sx, sy, sz);
+        copy.scale.set(sign * sx, sign * sy, sign * sz);
         copy.modifiers.addAll(inst.modifiers);
         copy.params.putAll(inst.params);
         copy.meshData = inst.meshData;
@@ -453,7 +576,7 @@ public final class DestructionWorld<M> {
     }
 
     /** Slab test of a ray (in the box's own space) against box = {min xyz, max xyz}: the ray parameter of the first touch (0 when the origin is inside), -1 for a miss - NaN included, which only a degenerate matrix produces and must never look like a hit. */
-    static float rayBox(Vector3f origin, Vector3f dir, float[] box) {
+    public static float rayBox(Vector3f origin, Vector3f dir, float[] box) {
         float tMin = Float.NEGATIVE_INFINITY, tMax = Float.POSITIVE_INFINITY;
         float[] o = {origin.x, origin.y, origin.z};
         float[] d = {dir.x, dir.y, dir.z};
@@ -603,11 +726,28 @@ public final class DestructionWorld<M> {
         return new GridHit(t * voxelWorldSize, new Vector3d(gridOrigin).fma(t + 0.5, gridDir), new Vector3d(gridDir));
     }
 
-    private static VoxelCrater.Result carveCrater(List<int[]> entries, Vector3d impactGrid, Vector3d directionGrid) {
+    /** What the crater took out, and the box (grid cells, the max side exclusive) it looked in: the region {@link VoxelFracture} has to examine. */
+    private record Crater(VoxelCrater.Result result, int[] box) {}
+
+    private static Crater carveCrater(List<int[]> entries, Vector3d impactGrid, Vector3d directionGrid) {
         VoxelCrater.Shape shape = VoxelCrater.create(
             (float) impactGrid.x, (float) impactGrid.y, (float) impactGrid.z, CRATER_RADIUS_VOXELS,
             (float) directionGrid.x, (float) directionGrid.y, (float) directionGrid.z);
-        return VoxelCrater.carve(shape, entries);
+        int[] box = {shape.boxMinX, shape.boxMinY, shape.boxMinZ, shape.boxMaxX, shape.boxMaxY, shape.boxMaxZ};
+        return new Crater(VoxelCrater.carve(shape, entries), box);
+    }
+
+    /** The width of the thinnest connection that holds, in voxels: the material's {@code breakWidth} over the voxel size, rounded to the nearest voxel (0 = the material never breaks that way). */
+    public static int neckVoxels(BreakProfile profile, float voxelWorldSize) {
+        return Math.round(profile.breakWidth / voxelWorldSize);
+    }
+
+    /**
+     * The break of a hit: what the crater left of {@code before}, with every connection narrower than the material's neck shattered
+     * ({@link VoxelFracture}). The same for the first hit on an instance, a later one on its remains and one on a piece that fell.
+     */
+    private static VoxelFracture.Result breakAfter(List<int[]> before, Crater crater, BreakProfile profile, float voxelWorldSize) {
+        return VoxelFracture.shatter(before, crater.result().surviving, crater.box(), neckVoxels(profile, voxelWorldSize));
     }
 
     private Outcome hitFresh(Fresh fresh, Vector3d origin, Vector3d dir) {
@@ -620,12 +760,12 @@ public final class DestructionWorld<M> {
         }
         PrimitiveVoxelizer.Result voxResult = PrimitiveVoxelizer.voxelize(voxInst, VOXEL_WORLD_SIZE);
         if (voxResult == null) {
-            return new Outcome(false, "[Destroy] '" + inst.id + "' can't be voxelized (indestructible, an unknown type, or a mesh that encloses no volume)");
+            return destroyWhole(fresh, inst, voxInst, live, dir, PrimitiveVoxelizer.whyNot(voxInst, VOXEL_WORLD_SIZE));
         }
         float vws = voxResult.voxelWorldSize;
         List<int[]> regions = voxResult.octree.collectFilledRegions();
         if (regions.isEmpty()) {
-            return new Outcome(false, "[Destroy] '" + inst.id + "' has no solid voxels to destroy");
+            return destroyWhole(fresh, inst, voxInst, live, dir, "no solid voxel left at this voxel size");
         }
         GridFrame frame = gridFrame(live[target], voxResult.gridOriginLocal);
         Vector3d gridDir = worldDirToGrid(frame, dir);
@@ -647,7 +787,7 @@ public final class DestructionWorld<M> {
                 (lh.y * voxInst.scale.y - voxResult.gridOriginLocal.y) / vws,
                 (lh.z * voxInst.scale.z - voxResult.gridOriginLocal.z) / vws);
         }
-        VoxelCrater.Result carved = carveCrater(regions, impact, gridDir);
+        Crater carved = carveCrater(regions, impact, gridDir);
 
         // "What stays": a piece resting on something (the floor, a table) is held up by it; a lever-arm part hangs from its hinge instead.
         Vector3d down = new Vector3d(0, -1, 0);
@@ -658,33 +798,86 @@ public final class DestructionWorld<M> {
         boolean grounded = inst.leverArm == null
             && restsOnSomething(snapshotScene(live), target, lowestY, bounds[0], bounds[3], bounds[2], bounds[5]);
 
-        Style style = host.styleFor(inst, voxInst, voxResult.octree.gridSize(), vws);
+        Style style = host.styleFor(inst, voxInst, voxResult);
         Remains<M> placement = new Remains<>(target, voxResult.gridOriginLocal, vws, style, grounded,
             down.x, down.y, down.z, bottomProjection, regions);
         return settle(placement, carved, frame, dir, gridPointToWorld(frame, vws, impact), true, volumeOf(regions));
     }
 
+    /** The side, in voxels, of the cube the burst of an object destroyed outright comes out of: its longest side, within these limits. */
+    public static final int WHOLE_BURST_MIN_VOXELS = 2, WHOLE_BURST_MAX_VOXELS = 24;
+
+    /**
+     * An object that cannot be turned into cubes - a flat mesh with no readable triangle, a shape thinner than a voxel, a hollow
+     * with every face removed - is not left standing unshootable: the hit destroys it outright. It stops being drawn (like every
+     * destroyed instance, it is not hit again), its face counts as entirely open ({@link SlabOpenings#gone}, so a door removed this
+     * way does not keep a hiding place shut), and a burst of particles of its own material comes out of where the shot landed,
+     * as many as the size of the object asks for (a speck throws the least a hit ever throws, a wall the most). An indestructible
+     * instance is never destroyed: it is refused, as everywhere else.
+     */
+    private Outcome destroyWhole(Fresh fresh, PbdInstance inst, PbdInstance voxInst, Matrix4f[] live, Vector3d shot, String why) {
+        int target = fresh.index();
+        if (inst.indestructible) {
+            return new Outcome(false, "[Destroy] '" + inst.id + "' is indestructible");
+        }
+        Vector3f local = fresh.localHit();
+        Vector3f hitWorld = live[target].transformPosition(new Vector3f(local));
+        Vector3d impact = new Vector3d(hitWorld.x, hitWorld.y, hitWorld.z);
+
+        // how big it is, in the world: the box it fills times its world scale, none of its sides less than a voxel (a line, or a thing
+        // with no thickness, is still something: it throws the least a hit ever throws, not nothing)
+        float[] box = localBox(inst);
+        double ex = Math.abs((box[3] - box[0]) * (double) voxInst.scale.x);
+        double ey = Math.abs((box[4] - box[1]) * (double) voxInst.scale.y);
+        double ez = Math.abs((box[5] - box[2]) * (double) voxInst.scale.z);
+        double longest = Math.max(ex, Math.max(ey, ez));
+        double voxel = VOXEL_WORLD_SIZE;
+        long volumeVoxels = (long) Math.min(1e12, Math.max(ex, voxel) * Math.max(ey, voxel) * Math.max(ez, voxel) / (voxel * voxel * voxel));
+        int side = (int) Math.max(WHOLE_BURST_MIN_VOXELS, Math.min(WHOLE_BURST_MAX_VOXELS, Math.round(longest / VOXEL_WORLD_SIZE)));
+
+        Style style = host.styleFor(inst, voxInst, null);
+        BreakProfile profile = style.profile;
+        float[] colour = style.fallback;
+        int hitSerial = serial++;
+        // the burst comes out of one cube centred on the impact: cell (0,0,0) of a grid whose corner is half a cube before it
+        double half = side * 0.5 * VOXEL_WORLD_SIZE;
+        DebrisEmitter.Frame frame = new DebrisEmitter.Frame(VOXEL_WORLD_SIZE,
+            new Vector3d(impact.x - half, impact.y - half, impact.z - half), new Quaterniond(), impact, shot);
+        int thrown = DebrisEmitter.burst(particles, List.of(new int[]{0, 0, 0, side}), VOXEL_WORLD_SIZE, frame.gridOrigin(), frame.gridRotation(),
+            impact, shot, DebrisEmitter.craterCount(profile, volumeVoxels), profile, (cube, p) -> colour, burstSeed(hitSerial));
+
+        host.hideInstance(target);
+        consumed.put(target, SlabOpenings.gone(VOXEL_WORLD_SIZE));
+        wakeDebrisNear(impact);
+        particles.wakeNear(impact.x, impact.y, impact.z, WAKE_RADIUS);
+        return new Outcome(true, "[Destroy] '" + inst.id + "' can't be turned into cubes (" + why + ") -> destroyed outright"
+            + (thrown > 0 ? "; " + thrown + " particle(s) thrown" : ""));
+    }
+
     /** A further hit on what is left of an already-destroyed instance. */
     private Outcome hitRemains(Remains<M> r, GridFrame frame, GridHit hit, Vector3d dir) {
-        VoxelCrater.Result carved = carveCrater(r.entries(), hit.impactGrid(), hit.directionGrid());
+        Crater carved = carveCrater(r.entries(), hit.impactGrid(), hit.directionGrid());
         return settle(r, carved, frame, dir, gridPointToWorld(frame, r.voxelWorldSize, hit.impactGrid()),
             false, volumeOf(r.entries()));
     }
 
     /**
-     * Applies a carved crater to an instance's remains: what the crater
-     * leaves is split into face-connected pieces (VoxelDebris.split) - the
-     * pieces still attached stay as the instance's voxel mesh, the others
-     * become falling rigid bodies with a mesh each. Everything that can fail
-     * (building meshes) is built BEFORE any state is touched, so a failure
-     * leaves the scene exactly as it was.
+     * Applies a carved crater to an instance's remains. FIRST the break: a connection the crater left narrower than the
+     * material holds is shattered ({@link VoxelFracture}), which is what lets a piece joined by a sliver come away whole.
+     * What is left is then split into face-connected pieces (VoxelDebris.split) - the pieces still attached stay as the
+     * instance's voxel mesh, the others become falling rigid bodies with a mesh each - and what the hit took out (the crater,
+     * the crumbs too small to fall, the splinters) is thrown up as particles. Everything that can fail (building meshes) is
+     * built BEFORE any state is touched, so a failure leaves the scene exactly as it was.
      */
-    private Outcome settle(Remains<M> placement, VoxelCrater.Result carved, GridFrame frame,
+    private Outcome settle(Remains<M> placement, Crater crater, GridFrame frame,
                            Vector3d shotWorld, Vector3d impactWorld, boolean fresh, long volumeBefore) {
         int index = placement.instanceIndex;
         PbdInstance inst = instances.get(index);
         float vws = placement.voxelWorldSize;
-        VoxelDebris.Split split = VoxelDebris.split(carved.surviving, placement.downX, placement.downY, placement.downZ,
+        BreakProfile profile = placement.style.profile;
+        VoxelCrater.Result carved = crater.result();
+        VoxelFracture.Result fracture = breakAfter(placement.entries(), crater, profile, vws);
+        VoxelDebris.Split split = VoxelDebris.split(fracture.surviving, placement.downX, placement.downY, placement.downZ,
             placement.bottomProjection, placement.grounded);
 
         M baseMesh = null;
@@ -705,7 +898,7 @@ public final class DestructionWorld<M> {
                 return new Outcome(false, "[Destroy] '" + inst.id + "' -> a detached piece's mesh failed to build");
             }
             RigidDebris body = VoxelDebris.spawn(piece, vws, frame.origin(), frame.rotation(),
-                new Vector3d(), new Vector3d(), new Vector3d(), shotWorld, 7919L * index + 104729L * hitSerial + spawned.size());
+                new Vector3d(), new Vector3d(), new Vector3d(), shotWorld, tumbleSeed(hitSerial, spawned.size()));
             spawned.add(new Chunk<>(piece.entries, body, mesh, vws, placement.style));
             fallenVoxels += piece.volume;
         }
@@ -718,48 +911,54 @@ public final class DestructionWorld<M> {
             remains.put(index, placement);
         } else {
             remains.remove(index);
+            consumed.put(index, SlabOpenings.measure(placement.footprint, List.of(), vws)); // nothing attached any more: the whole face is open
         }
         if (fresh) host.hideInstance(index);
         wakeDebrisNear(impactWorld);
         chunks.addAll(spawned);
         while (chunks.size() > MAX_LIVE_CHUNKS) host.closeMesh(chunks.remove(0).mesh);
+        int[] thrown = DebrisEmitter.throwHit(particles, carved.removed, split.dustCubes, carved.removedVoxels + split.dustVoxels, fracture,
+            profile, placement.style.colorFn, new DebrisEmitter.Frame(vws, frame.origin(), frame.rotation(), impactWorld, shotWorld), WAKE_RADIUS, burstSeed(hitSerial));
 
         long remaining = volumeOf(split.base);
         String chunkInfo = spawned.isEmpty() ? "" : "; " + spawned.size() + " piece(s) broke off and fall (" + fallenVoxels + " voxel(s))";
-        String dustInfo = split.dustPieces > 0 ? ", " + split.dustPieces + " crumb(s) (" + split.dustVoxels + " voxel(s)) discarded" : "";
-        if (baseMesh == null && spawned.isEmpty()) {
-            return new Outcome(true, "[Destroy] '" + inst.id + "' -> fully destroyed (" + volumeBefore + " voxel(s), all within the crater)");
-        }
-        return new Outcome(true, "[Destroy] '" + inst.id + "' -> " + (fresh ? "" : "follow-up hit: ")
-            + carved.removedVoxels + " voxel(s) removed, " + remaining + " still attached"
-            + (baseMesh != null ? " (" + split.base.size() + " geometry piece(s))" : "")
-            + chunkInfo + dustInfo);
+        String dustInfo = split.dustPieces > 0 ? ", " + split.dustPieces + " crumb(s) (" + split.dustVoxels + " voxel(s)) thrown up as particles" : "";
+        String debrisInfo = describeDebris(thrown, fracture, profile);
+        boolean fractured = fracture.broke();
+        String what = baseMesh == null && spawned.isEmpty()
+            ? "fully destroyed (" + volumeBefore + " voxel(s): " + carved.removedVoxels + " in the crater"
+                + (fracture.splinterVoxels > 0 ? ", " + fracture.splinterVoxels + " in splinters" : "")
+                + (split.dustVoxels > 0 ? ", " + split.dustVoxels + " in crumbs" : "") + ")"
+            : (fresh ? "" : "follow-up hit: ") + carved.removedVoxels + " voxel(s) removed, " + remaining + " still attached"
+                + (baseMesh != null ? " (" + split.base.size() + " geometry piece(s))" : "") + chunkInfo + dustInfo;
+        return new Outcome(true, "[Destroy] '" + inst.id + "' -> " + what + debrisInfo, fractured, fractured ? profile.breakSound : null);
     }
 
-    /** A hit on a piece that already broke off: carve it; what is left becomes new free pieces carrying its motion. */
+    /** A hit on a piece that already broke off: carve it (a connection it is left hanging by that is too narrow breaks too); what is left becomes new free pieces carrying its motion. */
     private Outcome hitChunk(Chunk<M> chunk, GridHit hit, Vector3d dir) {
-        VoxelCrater.Result carved = carveCrater(chunk.entries, hit.impactGrid(), hit.directionGrid());
+        Crater crater = carveCrater(chunk.entries, hit.impactGrid(), hit.directionGrid());
+        VoxelCrater.Result carved = crater.result();
         if (carved.removedVoxels == 0) {
             return new Outcome(false, "[Destroy] falling piece -> the hit removed nothing");
         }
-        List<VoxelConnectivity.Component> pieces = VoxelConnectivity.split(carved.surviving);
+        BreakProfile profile = chunk.style.profile;
+        VoxelFracture.Result fracture = breakAfter(chunk.entries, crater, profile, chunk.voxelWorldSize);
+        VoxelDebris.Split split = VoxelDebris.fall(fracture.surviving);
         RigidDebris parent = chunk.body;
         Vector3d meshOrigin = parent.bodyToWorld(new Vector3d(parent.comMesh).negate());
         Quaterniond meshRotation = new Quaterniond(parent.orientation);
 
         List<Chunk<M>> spawned = new ArrayList<>();
         int hitSerial = serial++;
-        int dust = 0;
         long fallenVoxels = 0;
-        for (VoxelConnectivity.Component piece : pieces) { // biggest first
-            if (piece.volume < VoxelDebris.MIN_CHUNK_VOXELS || spawned.size() >= VoxelDebris.MAX_CHUNKS_PER_HIT) { dust++; continue; }
+        for (VoxelConnectivity.Component piece : split.chunks) { // biggest first
             M mesh = host.buildMesh(piece.entries, chunk.voxelWorldSize, chunk.style);
             if (mesh == null) {
                 for (Chunk<M> s : spawned) host.closeMesh(s.mesh);
                 return new Outcome(false, "[Destroy] falling piece -> a mesh failed to build");
             }
             RigidDebris body = VoxelDebris.spawn(piece, chunk.voxelWorldSize, meshOrigin, meshRotation,
-                parent.position, parent.velocity, parent.angularVelocity, dir, 31337L * hitSerial + spawned.size());
+                parent.position, parent.velocity, parent.angularVelocity, dir, tumbleSeed(hitSerial, spawned.size()));
             spawned.add(new Chunk<>(piece.entries, body, mesh, chunk.voxelWorldSize, chunk.style));
             fallenVoxels += piece.volume;
         }
@@ -768,8 +967,41 @@ public final class DestructionWorld<M> {
         host.closeMesh(chunk.mesh);
         chunks.addAll(spawned);
         while (chunks.size() > MAX_LIVE_CHUNKS) host.closeMesh(chunks.remove(0).mesh);
+        Vector3d impactWorld = new Vector3d(hit.impactGrid()).mul(chunk.voxelWorldSize);
+        meshRotation.transform(impactWorld).add(meshOrigin);
+        int[] thrown = DebrisEmitter.throwHit(particles, carved.removed, split.dustCubes, carved.removedVoxels + split.dustVoxels, fracture,
+            profile, chunk.style.colorFn, new DebrisEmitter.Frame(chunk.voxelWorldSize, meshOrigin, meshRotation, impactWorld, dir), WAKE_RADIUS, burstSeed(hitSerial));
+        boolean fractured = fracture.broke();
         return new Outcome(true, "[Destroy] falling piece -> " + carved.removedVoxels + " voxel(s) removed, "
-            + spawned.size() + " piece(s) left (" + fallenVoxels + " voxel(s))" + (dust > 0 ? ", " + dust + " crumb(s) discarded" : ""));
+            + spawned.size() + " piece(s) left (" + fallenVoxels + " voxel(s))"
+            + (split.dustPieces > 0 ? ", " + split.dustPieces + " crumb(s) (" + split.dustVoxels + " voxel(s)) thrown up as particles" : "")
+            + describeDebris(thrown, fracture, profile), fractured, fractured ? profile.breakSound : null);
+    }
+
+    /** The seed of the bursts of particles of hit number {@code hitSerial} (each hit is its own, and a replay of the same hits throws the same particles). */
+    public static long burstSeed(int hitSerial) {
+        return 104729L * hitSerial + 17L;
+    }
+
+    /**
+     * The seed of the tumble of piece number {@code piece} of hit number {@code hitSerial} (the same hits replayed tumble their
+     * pieces the same way). The pieces of one hit are 7919 apart, and the hits 104729: the first draws of java.util.Random for
+     * seeds one apart are all but equal, which would send the pieces of one hit off in lockstep.
+     */
+    public static long tumbleSeed(int hitSerial, int piece) {
+        return 104729L * hitSerial + 7919L * piece;
+    }
+
+    private static String describeDebris(int[] thrown, VoxelFracture.Result fracture, BreakProfile profile) {
+        StringBuilder sb = new StringBuilder();
+        if (thrown[0] + thrown[1] > 0) sb.append("; ").append(thrown[0] + thrown[1]).append(" particle(s) thrown");
+        if (fracture.broke()) {
+            sb.append("; a connection under ").append(Math.round(profile.breakWidth * 1000)).append(" mm could not hold and broke (")
+                .append(fracture.splinterVoxels).append(" voxel(s) of splinters").append(fracture.parted() ? ", a piece parted" : "").append(")");
+        } else if (fracture.skipped != null) {
+            sb.append("; break analysis skipped (").append(fracture.skipped).append(")");
+        }
+        return sb.toString();
     }
 
     /** Something resting near the impact may have just lost its support (a stump carved away under it): wake it and re-derive what it can land on. */
@@ -787,12 +1019,16 @@ public final class DestructionWorld<M> {
     // ------------------------------------------------------------------
 
     /**
-     * Advances every awake chunk by dt seconds: gravity, the floor, the
-     * remains of destroyed instances, and the boxes of nearby cubes and
-     * cylinders. Call once per frame. Does nothing - and costs nothing -
-     * while no piece has broken off or all have settled.
+     * Advances every awake chunk and every particle by dt seconds: gravity, the floor, the remains of destroyed
+     * instances, and the boxes of nearby cubes and cylinders. Call once per frame. Does nothing - and costs nothing -
+     * while no piece has broken off or all have settled and no particle is alive.
      */
     public void update(double dt) {
+        stepChunks(dt);
+        stepParticles(dt);
+    }
+
+    private void stepChunks(double dt) {
         if (chunks.isEmpty()) return;
         double step = Math.min(dt, MAX_DEBRIS_DT);
         Matrix4f[] live = null;
@@ -814,6 +1050,30 @@ public final class DestructionWorld<M> {
             if (lost) host.closeMesh(c.mesh);
             return lost;
         });
+    }
+
+    /**
+     * The particles fall on what the scene is NOW - rebuilt every step they live, never kept: a door that swings, a cube that is
+     * moved or an asset replaced on the fly is seen as it is. The floor, the cubes and cylinders near the cloud, and the voxels
+     * of the remains (a particle that lands on the stump of a post lands on the stump).
+     */
+    private void stepParticles(double dt) {
+        if (particles.isEmpty()) return;
+        double[] cloud = particles.bounds();
+        Matrix4f[] live = host.liveTransforms();
+        SceneSnapshot snapshot = snapshotScene(live);
+        List<RigidDebris.Collider> colliders = new ArrayList<>();
+        colliders.add(RigidDebris.floor(snapshot.floorY));
+        Vector3d centre = new Vector3d(cloud[0], cloud[1], cloud[2]);
+        double reach = COLLIDER_REACH + cloud[3];
+        for (SceneBox box : snapshot.boxes) {
+            if (box.within(centre, reach)) colliders.add(RigidDebris.box(box.centre, box.rotation, box.half));
+        }
+        for (Remains<M> r : remains.values()) {
+            GridFrame frame = gridFrame(live[r.instanceIndex], r.gridOrigin);
+            colliders.add(RigidDebris.voxels(r.solid(), r.voxelWorldSize, frame.origin(), frame.rotation()));
+        }
+        particles.step(dt, colliders);
     }
 
     private List<RigidDebris.Collider> buildColliders(Chunk<M> chunk, Matrix4f[] live, SceneSnapshot snapshot) {

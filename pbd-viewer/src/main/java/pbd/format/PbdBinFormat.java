@@ -1,5 +1,7 @@
 package pbd.format;
 
+import pbd.net.CappedRead;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -78,6 +80,14 @@ public final class PbdBinFormat {
      * just now followed by the parse step separately instead of
      * inline. */
     public static String decompressToText(Path inputPath) throws IOException {
+        return decompressToText(inputPath, PbdLimits.MAX_DECOMPRESSED_BYTES);
+    }
+
+    /** {@link #decompressToText(Path)} with a limit of the caller's choosing: on the file as it lies on the disk and on the text it expands to. */
+    public static String decompressToText(Path inputPath, long maxBytes) throws IOException {
+        if (Files.size(inputPath) > maxBytes) {
+            throw new IOException("'" + inputPath + "' is larger than " + CappedRead.describe(maxBytes) + " - refused");
+        }
         byte[] all = Files.readAllBytes(inputPath);
         if (all.length < 5 || all[0] != MAGIC[0] || all[1] != MAGIC[1] || all[2] != MAGIC[2] || all[3] != MAGIC[3]) {
             throw new IOException("Not a .pbdbin file (missing PBDB magic header): " + inputPath);
@@ -88,10 +98,10 @@ public final class PbdBinFormat {
         }
 
         byte[] gzipped = java.util.Arrays.copyOfRange(all, 5, all.length);
-        ByteArrayOutputStream decompressed = new ByteArrayOutputStream();
+        // a few kilobytes of gzip can stand for gigabytes of text: the expansion is capped, not discovered when the memory runs out
         try (GZIPInputStream gzip = new GZIPInputStream(new java.io.ByteArrayInputStream(gzipped))) {
-            gzip.transferTo(decompressed);
+            byte[] text = CappedRead.readAll(gzip, maxBytes, "the decompressed scene in '" + inputPath.getFileName() + "'");
+            return new String(text, StandardCharsets.UTF_8);
         }
-        return decompressed.toString(StandardCharsets.UTF_8);
     }
 }

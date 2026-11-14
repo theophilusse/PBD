@@ -6,13 +6,19 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
+import pbd.format.BreakProfile;
 import pbd.format.MaterialRegistry;
+import pbd.format.ModifierParams;
 import pbd.format.ModifierRegistry;
 import pbd.format.PbdInstance;
+import pbd.format.PrimitiveParts;
 import pbd.format.PbdModifier;
 import pbd.format.PbdScene;
 import pbd.format.PrimitiveRegistry;
+import pbd.pz.HidingRules;
 import pbd.voxel.DestructionWorld;
+import pbd.voxel.ParticleDraw;
+import pbd.voxel.ParticleSystem;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -91,8 +97,10 @@ public final class PbdRenderer implements AutoCloseable {
     /** Pre-decoded pixel data for voxel-destruction color sampling -
      * see this class's own upload() for why this exists and why it's
      * populated there specifically, not lazily during actual
-     * destruction. Keyed by the same resolved texture path string
-     * materialOverrides' own "texture" field already holds. */
+     * destruction. Keyed by the picture (pbd.format.MaterialPictures.keyOf): the
+     * resolved texture path string materialOverrides' own "texture" field
+     * already holds, and the quarter turns of the material's uvRotation -
+     * the pixels are the turned picture, the very ones the GPU layer holds. */
     public record VoxelTexturePixels(byte[] pixelBytes, int width, int height) {}
     private final Map<String, VoxelTexturePixels> voxelTexturePixels = new java.util.HashMap<>();
 
@@ -100,9 +108,16 @@ public final class PbdRenderer implements AutoCloseable {
      * null if this exact texture path was never successfully decoded
      * (missing file, unsupported format, ...), which the caller treats
      * as "fall back to this material's own flat color" the same way it
-     * already did for a material with no texture= at all. */
-    public VoxelTexturePixels voxelTexturePixelsFor(String texturePath) {
-        return voxelTexturePixels.get(texturePath);
+     * already did for a material with no texture= at all. The turns are
+     * the material's own ({@link pbd.format.MaterialUv#quarterTurns}); there is deliberately no lookup without them. */
+    public VoxelTexturePixels voxelTexturePixelsFor(String texturePath, int quarterTurns) {
+        Path path;
+        try {
+            path = Path.of(texturePath);
+        } catch (java.nio.file.InvalidPathException e) {
+            return null;
+        }
+        return voxelTexturePixels.get(pbd.format.MaterialPictures.keyOf(path, quarterTurns));
     }
     private int textureArrayGlId;
     private MaterialTextureArray normalTextureArray;
@@ -213,6 +228,8 @@ public final class PbdRenderer implements AutoCloseable {
         // a fresh one per upload, so nothing of a previous scene's arm
         // state - values, locks, drags - can carry over into this one.
         this.arms = new LeverArmSystem(scene);
+        // ...and the same for the lights that follow a door or a lever.
+        this.lightLinks = new LightLinks(scene);
         this.primitiveRegistry = primitiveRegistry;
         this.modifierRegistry = modifierRegistry;
         this.materialRegistry = materialRegistry;
@@ -229,6 +246,7 @@ public final class PbdRenderer implements AutoCloseable {
         uploadWorldTransforms(worldTransforms);
         uploadModifiers(scene, modifierRegistry);
         uploadMaterials(materialRegistry);
+        lightLinks.update(this::isInstanceOpen); // a light that follows a door starts in its door's state (loaded shut: dark) - before the buffer is built from it
         uploadLights(scene);
 
         totalUploadedBytes = (long) scene.instances.size() * 48
@@ -262,13 +280,8 @@ public final class PbdRenderer implements AutoCloseable {
             // smoothX/Z round its side edges) - any axis without its own
             // override falls back to `smooth=` (default 0), so existing
             // files using only `smooth=` keep applying it uniformly.
-            float[] cubeSmooth = {0f, 0f, 0f};
-            if ("cube".equals(inst.type)) {
-                float base = Float.parseFloat(inst.params.getOrDefault("smooth", "0"));
-                cubeSmooth[0] = Float.parseFloat(inst.params.getOrDefault("smoothX", String.valueOf(base)));
-                cubeSmooth[1] = Float.parseFloat(inst.params.getOrDefault("smoothY", String.valueOf(base)));
-                cubeSmooth[2] = Float.parseFloat(inst.params.getOrDefault("smoothZ", String.valueOf(base)));
-            }
+            // (read by PrimitiveParts.cubeSmoothness, the same numbers the voxelizer rounds a destroyed cube with)
+            float[] cubeSmooth = "cube".equals(inst.type) ? PrimitiveParts.cubeSmoothness(inst) : new float[]{0f, 0f, 0f};
             buf.putFloat(cubeSmooth[0]).putFloat(cubeSmooth[1]).putFloat(cubeSmooth[2]).putFloat(0); // params0
             buf.putFloat(0).putFloat(0).putFloat(0).putFloat(0); // params1
             modifierCursor += inst.modifiers.size();
@@ -309,6 +322,11 @@ public final class PbdRenderer implements AutoCloseable {
     // a light parented to a door or a lever moves with it, and the buffer
     // is rebuilt when LightTracker sees one has moved.
     private final LightTracker lightTracker = new LightTracker();
+    // The lights that switch with a door, a drawer or a lever (same
+    // linkGroup): pure logic in LightLinks, asked once per frame whether
+    // each group is open and answered by flipping the light's flag. Rebuilt
+    // by every upload(), like the arms.
+    private LightLinks lightLinks;
     private boolean[] instanceOpen;      // target state: true = animating toward the open end (last keyframe, or leverArm's open pose), false = toward the closed end (first keyframe, or this instance's own base pose) - shared by both mechanisms, since "which way is this door toggled" is the same question either way. Keyframed instances only: a lever arm keeps its own target and value inside LeverArmSystem, and the facade (isInstanceOpen/isInstanceFullyOpen/isInstanceFullyClosed) reads the arm's value rather than any toggle flag, since a drag-driven value has no discrete "toggled" moment at all.
     // Tracks hideInstance()'s own effect SEPARATELY from worldTransforms
     // itself - needed because updateAnimation's own HierarchyResolver
@@ -416,6 +434,11 @@ public final class PbdRenderer implements AutoCloseable {
      * appear the moment a linked door is clicked open, not only once
      * its whole swing animation has finished playing out.
      *
+     * A door that has been ALTERED - a hit (G) turned it, or anything hanging
+     * from it (its panel, its handle: see pbd.pz.DoorParts), into voxels or
+     * destroyed it - counts as open, whatever its arm says: a door shot to
+     * pieces is not closed any more, and what is inside is in view.
+     *
      * Promoted here from a Main.java-private helper of the same name
      * and behavior - that version worked correctly, but lived only in
      * the application's own game-loop code, unreachable by a modder's
@@ -426,7 +449,7 @@ public final class PbdRenderer implements AutoCloseable {
     public boolean isContainerOpen(int metaIdx) {
         java.util.List<String> triggers = scene.instances.get(metaIdx).containerTriggers;
         if (!triggers.isEmpty()) {
-            return anyTriggerMatches(triggers, true);
+            return anyTriggerMatches(triggers, true) || doorsAltered(triggers);
         }
         for (int i = 0; i < scene.instances.size(); i++) {
             if (isInstanceOpen(i)) return true;
@@ -446,7 +469,9 @@ public final class PbdRenderer implements AutoCloseable {
      * know whether it can still see a hiding player through a door
      * that's ajar rather than fully shut - for the finer-grained version
      * of that question (exactly HOW ajar, not just open-vs-closed), see
-     * getArmValue, which now exists for a lever-arm instance. Promoted
+     * getArmValue, which now exists for a lever-arm instance. A door that
+     * has been altered (see isContainerOpen) is never closed again: it
+     * does not swing back to what it was. Promoted
      * here for the same reason isContainerOpen was - a modder's own code
      * couldn't reach the Main.java-private version this replaces. */
     public boolean areAllDoorsClosed(int metaIdx) {
@@ -459,7 +484,85 @@ public final class PbdRenderer implements AutoCloseable {
                 }
             }
         }
-        return true;
+        return !doorsAltered(triggers);
+    }
+
+    /**
+     * Whether a hit has altered a door named in {@code triggers}, or anything hanging from it (HidingRules.anyAltered, which
+     * is checked without a window): only doors count - an instance that cannot be opened is scenery, see {@link #isAnimatable}.
+     * Asked every frame by the container display: with no destruction at all it costs nothing.
+     */
+    private boolean doorsAltered(java.util.List<String> triggers) {
+        if (destruction == null) return false;
+        return HidingRules.anyAltered(triggers, scene.instances.size(), i -> scene.instances.get(i).id, this::isAnimatable,
+            i -> scene.instances.get(i).parentIndex, destruction.alteredInstances());
+    }
+
+    /**
+     * What the doors of hiding place (container) {@code metaIdx} add up to right now: is someone inside undetectable
+     * ({@link HidingRules.Assessment#concealing}: every linked door fully closed and unaltered) and can anyone get in or out
+     * ({@link HidingRules.Assessment#shut}: every door is shut, which is the same condition). One entry per door in the container's
+     * containerTriggers - the list {@link #areAllDoorsClosed} reads - that CAN be opened ({@link #isAnimatable}: keyframes or a
+     * lever arm; a listed instance that cannot move is scenery, not a door), carrying whether that door is fully closed and what
+     * the destruction world says of the door AND of everything hanging from it - its panel, its handle (pbd.pz.DoorParts): a door
+     * any part of which a hit has reached is altered, and an altered door is open. The rules themselves are HidingRules', checked
+     * without a window.
+     */
+    public HidingRules.Assessment assessHideout(int metaIdx) {
+        if (metaIdx < 0 || metaIdx >= scene.instances.size()) return HidingRules.assess(null);
+        return HidingRules.assessPlace(scene.instances.get(metaIdx).containerTriggers, scene.instances.size(),
+            i -> scene.instances.get(i).id,
+            this::isAnimatable,
+            this::isInstanceFullyClosed,
+            i -> scene.instances.get(i).parentIndex,
+            destruction == null ? new int[0] : destruction.alteredInstances(),
+            i -> destruction == null ? null : destruction.openingsOf(i));
+    }
+
+    /** {@link #assessHideout(int)} for the hiding place named {@code id}; null when no instance has that id. */
+    public HidingRules.Assessment assessHideout(String id) {
+        int index = HidingRules.indexOf(id, scene.instances.size(), i -> scene.instances.get(i).id);
+        return index < 0 ? null : assessHideout(index);
+    }
+
+    /**
+     * What H does: {@code hiding} says the player is inside a hiding place now (then {@code container} is that place's instance
+     * index), else {@code container} is the one the crosshair is on (-1 for none). The decision is HidingRules.onHideKey's; this
+     * only reads the facts it needs - the place's size and its doors - so the key handler has nothing to decide.
+     */
+    public HidingRules.Verdict hideKeyVerdict(boolean hiding, int container) {
+        if (container < 0 || container >= scene.instances.size()) {
+            return HidingRules.onHideKey(hiding, null, 0, 0, 0, null);
+        }
+        Vector3f size = instanceWorldSize(container);
+        return HidingRules.onHideKey(hiding, scene.instances.get(container).id, size.x, size.y, size.z, assessHideout(container));
+    }
+
+    /**
+     * What E does (see {@link UseKey}): takes the nearest item of {@code openContainers} the ray goes through, or switches the lights
+     * of the model whose part is nearer - the ray is the camera's. This only gathers what needs to know where everything stands
+     * (the items, the parts of models and what is left of the ones G turned into cubes); the decision is UseKey's and
+     * LightSwitch's. The sounds to play are in the outcome.
+     */
+    public UseKey.Outcome pressUse(java.util.Collection<pbd.pz.ContainerContents> openContainers, Vector3f rayOrigin, Vector3f rayDir) {
+        pbd.pz.ContainerContents.Pick pick = pbd.pz.ContainerContents.nearestAmong(openContainers, this::instanceWorldCenter,
+            this::instanceWorldRotation, rayOrigin, rayDir);
+        LightSwitch.Aim aim = LightSwitch.aim(scene, worldForUse(), i -> !isHiddenInstance(i) || destruction().hasRemains(i),
+            rayOrigin, rayDir, LightSwitch.REACH);
+        return UseKey.press(scene, lightLinks, pick, aim);
+    }
+
+    /** Where every instance stands now, for E: the renderer's own transforms, but for an instance G turned into cubes (its own entry is zeroed) the live one - the cubes that remain stand where it stands. */
+    private Matrix4f[] worldForUse() {
+        if (hiddenInstances == null) return worldTransforms;
+        Matrix4f[] world = worldTransforms.clone();
+        Matrix4f[] live = null;
+        for (int i = 0; i < world.length && i < hiddenInstances.length; i++) {
+            if (!hiddenInstances[i] || !destruction().hasRemains(i)) continue;
+            if (live == null) live = resolveLiveTransforms();
+            world[i] = live[i];
+        }
+        return world;
     }
 
     private boolean anyTriggerMatches(java.util.List<String> triggerNames, boolean requireOpen) {
@@ -525,34 +628,17 @@ public final class PbdRenderer implements AutoCloseable {
         return extractRotationRobust(worldTransforms[instanceIndex]);
     }
 
-    /** Same fix, same reason, as Main.java's own extractRotationRobust
-     * (that copy's own doc has the full story: a direct numeric test
-     * confirmed JOML's Matrix4f.getNormalizedRotation() returns
-     * something that ISN'T EVEN A VALID UNIT QUATERNION for a matrix
-     * with strongly non-uniform scale - a 27:1 ratio between axes in
-     * the real reported case). Duplicated rather than shared across
-     * the two files for the same reason several other small helpers in
-     * this codebase already are (see e.g. _shared_remote_cache_dir in
-     * the Python addon's own history) - a two-line static helper isn't
-     * worth a new shared utility class or a public-API change to pull
-     * across a package boundary for. This copy specifically matters for
-     * instanceWorldRotation just above: container-item placement/hit-
-     * testing (ContainerContents.itemWorldPosition and
-     * removeNearestToRay, both driven by this method) would have
-     * inherited the exact same wrong-rotation bug for any container
-     * whose own scale is non-uniform enough to trigger it - most of
-     * them, to some degree, since a storage cube is rarely perfectly
-     * cubic. */
+    /** The rotation of a world matrix with its scale divided out: DestructionWorld.rotationOf, the one definition for the whole program
+     * (this file and Main.java each used to carry a copy). JOML's Matrix4f.getNormalizedRotation() returns something that ISN'T EVEN A
+     * VALID UNIT QUATERNION for a matrix with strongly non-uniform scale - a 27:1 ratio between axes in the real reported case - so
+     * the axes are normalized first; and a matrix that mirrors (a negative scale) gets the rotation of the matrix with its three axes
+     * turned over, the one that goes with a scale negative on all three (the voxels of a mirrored object that was destroyed are built
+     * that way). Matters for instanceWorldRotation just above - container-item placement/hit-testing (ContainerContents.itemWorldPosition
+     * and removeNearestToRay, both driven by it) - and for drawDestroyed, where the voxels of a destroyed object are drawn. */
     private static Quaternionf extractRotationRobust(Matrix4f m) {
-        Vector3f colX = new Vector3f(m.m00(), m.m01(), m.m02()).normalize();
-        Vector3f colY = new Vector3f(m.m10(), m.m11(), m.m12()).normalize();
-        Vector3f colZ = new Vector3f(m.m20(), m.m21(), m.m22()).normalize();
-        Matrix4f rotOnly = new Matrix4f(
-            colX.x, colX.y, colX.z, 0,
-            colY.x, colY.y, colY.z, 0,
-            colZ.x, colZ.y, colZ.z, 0,
-            0, 0, 0, 1);
-        return rotOnly.getNormalizedRotation(new Quaternionf());
+        // one definition for the whole program, the one that places a destroyed object's voxels (DestructionWorld.rotationOf), which also
+        // knows what to do with a matrix that mirrors: the voxels must be drawn where the grid was built
+        return pbd.voxel.DestructionWorld.rotationOf(m);
     }
 
     public PbdScene scene() {
@@ -572,18 +658,35 @@ public final class PbdRenderer implements AutoCloseable {
         return !Double.isNaN(instanceAnimTime[i]) || arms.has(i);
     }
 
+    public pbd.audio.SoundPlayer soundPlayer; // null = no audio (default) - set from Main.java once a SoundPlayer exists; keyframe sound triggers below are a no-op until then
+
     /**
      * Advances every keyframed or lever-arm instance's own progress
      * toward its current open/closed target, then re-resolves and
-     * re-uploads world transforms - only does any work if the scene
+     * re-uploads world transforms - only does that work if the scene
      * actually has an animatable instance of either kind, so a static
-     * scene pays nothing extra per frame. Call once per frame, before
+     * scene pays nothing extra per frame - and finally brings the lights
+     * buffer up to date (refreshLights). Call once per frame, before
      * render().
      */
-    public pbd.audio.SoundPlayer soundPlayer; // null = no audio (default) - set from Main.java once a SoundPlayer exists; keyframe sound triggers below are a no-op until then
-
     public void updateAnimation(double dt) {
-        if (!hasAnimatedInstances) return;
+        if (scene == null) return; // nothing uploaded yet
+        if (hasAnimatedInstances) stepAnimation(dt);
+        refreshLights();
+    }
+
+    /**
+     * Rebuilds the lights buffer when it has gone stale, for any of three reasons: a light that follows a door or a lever
+     * (LightLinks) was switched with it this frame; a light was switched on or off by hand since the last build - the facade's
+     * toggleLight and setLightEnabled only flip a flag, nothing else would ever send that to the GPU; or a lamp hung on
+     * something that moved is no longer where the buffer put it.
+     */
+    private void refreshLights() {
+        boolean followedItsDoor = lightLinks.update(this::isInstanceOpen) > 0;
+        if (followedItsDoor || lightTracker.switched(scene) || lightTracker.moved(worldTransforms)) uploadLights(scene);
+    }
+
+    private void stepAnimation(double dt) {
         for (int i = 0; i < scene.instances.size(); i++) {
             PbdInstance inst = scene.instances.get(i);
             if (!Double.isNaN(instanceAnimTime[i])) {
@@ -639,12 +742,7 @@ public final class PbdRenderer implements AutoCloseable {
             }
         }
         uploadWorldTransforms(worldTransforms);
-        // A light hung on a swinging door or a lever moved with it just
-        // now: its entry in the lights buffer is stale until rebuilt (the
-        // buffer used to be filled once, at load, and again only on a
-        // light switch - the lamp's mesh moved away and its light stayed
-        // behind).
-        if (lightTracker.moved(worldTransforms)) uploadLights(scene);
+        // (A light hung on this door or lever moved with it just now: refreshLights, right after, rebuilds its entry.)
     }
 
     /** Plays any keyframe's sound field whose time was just crossed
@@ -1273,37 +1371,13 @@ public final class PbdRenderer implements AutoCloseable {
                 buf.putInt(modifierRegistry.idOf(mod.type));
                 buf.putInt(0); // curveRef: no curve table on the GPU side yet, see README
                 buf.position(buf.position() + 8); // std430 padding before the vec4 (see file header)
-                if ("taper".equals(mod.type)) {
-                    // bottomScale (-Y end) in .x, topScale (+Y end) in .y -
-                    // both default to 1.0 (no taper) if unset, matching
-                    // pbd.tese's applyTaper.
-                    buf.putFloat(mod.getFloat("bottomScale", 1f));
-                    buf.putFloat(mod.getFloat("topScale", 1f));
-                    buf.putFloat(0).putFloat(0);
-                } else if ("bend".equals(mod.type)) {
-                    // axis chooses BOTH the rotation plane and (cyclically)
-                    // which coordinate is the arc-length parameter - see
-                    // pbd.tese's applyBend (a real constant-radius arc, not
-                    // to be confused with `shear` below).
-                    buf.putFloat(mod.getFloat("angle", 0f));
-                    buf.putFloat(axisIndex(mod.get("axis")));
-                    buf.putFloat(0).putFloat(0);
-                } else if ("shear".equals(mod.type)) {
-                    // Three independent factors applied together (not a
-                    // choice of one axis) - factorX/Y/Z default to 0 (no
-                    // effect from that case) if unset. See pbd.tese's
-                    // applyShear for why this was renamed from `bend`: it
-                    // rotates a plane by an angle proportional to the third
-                    // coordinate, which - unlike a real bend - scales the
-                    // cross-section rather than preserving it.
-                    buf.putFloat(mod.getFloat("factorX", 0f));
-                    buf.putFloat(mod.getFloat("factorY", 0f));
-                    buf.putFloat(mod.getFloat("factorZ", 0f));
-                    buf.putFloat(0);
-                } else {
-                    buf.putFloat(mod.getFloat("angle", 0f));
-                    buf.putFloat(0).putFloat(0).putFloat(0);
-                }
+                // The vec4 is ModifierParams' - the same numbers the voxel conversion's port of the shader reads, from the same code. What
+                // each slot holds, by modifier (see pbd.tese): a taper has bottomScale (-Y end) in .x and topScale (+Y end) in .y, both 1.0
+                // when unset (no taper); a bend has its angle in .x and, in .y, the axis that chooses BOTH the rotation plane and (cyclically)
+                // which coordinate is the arc-length parameter (a real constant-radius arc, not to be confused with `shear`); a shear has
+                // three independent factors, factorX/Y/Z, applied together, each 0 when unset (it rotates a plane by an angle proportional
+                // to the third coordinate, which - unlike a real bend - scales the cross-section rather than preserving it).
+                for (float component : ModifierParams.vec4(mod)) buf.putFloat(component);
             }
         }
         buf.flip();
@@ -1319,15 +1393,19 @@ public final class PbdRenderer implements AutoCloseable {
         if (roughnessTextureArray != null) roughnessTextureArray.close();
         if (displacementTextureArray != null) displacementTextureArray.close();
 
-        java.util.List<Path> texturePaths = new java.util.ArrayList<>();
-        java.util.List<Path> normalPaths = new java.util.ArrayList<>();
-        java.util.List<Path> roughnessPaths = new java.util.ArrayList<>();
-        java.util.List<Path> displacementPaths = new java.util.ArrayList<>();
+        java.util.List<pbd.format.MaterialPictures.Request> texturePaths = new java.util.ArrayList<>();
+        java.util.List<pbd.format.MaterialPictures.Request> normalPaths = new java.util.ArrayList<>();
+        java.util.List<pbd.format.MaterialPictures.Request> roughnessPaths = new java.util.ArrayList<>();
+        java.util.List<pbd.format.MaterialPictures.Request> displacementPaths = new java.util.ArrayList<>();
         for (Map<String, String> fields : scene.materialOverrides.values()) {
-            if (fields.get("texture") != null) texturePaths.add(Path.of(fields.get("texture")));
-            if (fields.get("normalMap") != null) normalPaths.add(Path.of(fields.get("normalMap")));
-            if (fields.get("roughnessMap") != null) roughnessPaths.add(Path.of(fields.get("roughnessMap")));
-            if (fields.get("displacementMap") != null) displacementPaths.add(Path.of(fields.get("displacementMap")));
+            // uvRotation (MaterialUv, quarter turns) turns EVERY map of the material alike, so that the normal, roughness and
+            // displacement maps keep lining up with the diffuse picture - each picture is a file AND its turns (the same file may be
+            // used turned differently by another material), and the shader reads all four at the same uvScale-d coordinate.
+            int turns = pbd.format.MaterialUv.quarterTurns(fields, null);
+            if (fields.get("texture") != null) texturePaths.add(new pbd.format.MaterialPictures.Request(Path.of(fields.get("texture")), turns));
+            if (fields.get("normalMap") != null) normalPaths.add(new pbd.format.MaterialPictures.Request(Path.of(fields.get("normalMap")), turns));
+            if (fields.get("roughnessMap") != null) roughnessPaths.add(new pbd.format.MaterialPictures.Request(Path.of(fields.get("roughnessMap")), turns));
+            if (fields.get("displacementMap") != null) displacementPaths.add(new pbd.format.MaterialPictures.Request(Path.of(fields.get("displacementMap")), turns));
         }
         System.out.println("[Materials] Diffuse textures requested: " + texturePaths);
         System.out.println("[Materials] Normal maps requested: " + normalPaths);
@@ -1358,10 +1436,10 @@ public final class PbdRenderer implements AutoCloseable {
         // call, not a second independent one running on its own
         // schedule.
         voxelTexturePixels.clear();
-        for (Path texturePath : texturePaths) {
-            MaterialTextureArray.PixelData pd = textureArray.pixelDataOf(texturePath);
+        for (pbd.format.MaterialPictures.Request request : texturePaths) {
+            MaterialTextureArray.PixelData pd = textureArray.pixelDataOf(request.path(), request.quarterTurns());
             if (pd != null) {
-                voxelTexturePixels.put(texturePath.toString(), new VoxelTexturePixels(pd.rgba(), pd.width(), pd.height()));
+                voxelTexturePixels.put(request.key(), new VoxelTexturePixels(pd.rgba(), pd.width(), pd.height()));
             }
         }
         textureArrayGlId = textureArray.glId;
@@ -1387,10 +1465,14 @@ public final class PbdRenderer implements AutoCloseable {
             MaterialCatalog.Entry entry = resolveMaterialEntry(name);
             float textureLayer = -1f, uvScaleU = 1f, uvScaleV = 1f, normalLayer = -1f, roughnessLayer = -1f, reflectivity = 0f, transparency = 0f;
             float displacementLayer = -1f, displacementScale = 0f;
+            int turns = 0;
             Map<String, String> override = name != null ? scene.materialOverrides.get(name) : null;
             if (override != null) {
+                // read once for the four maps below; whatever could not be read (a scale, a rotation) is reported at the end of this block
+                List<String> uvProblems = new ArrayList<>();
+                turns = pbd.format.MaterialUv.quarterTurns(override, uvProblems);
                 if (override.containsKey("texture")) {
-                    int layer = textureArray.layerOf(Path.of(override.get("texture")));
+                    int layer = textureArray.layerOf(Path.of(override.get("texture")), turns);
                     // -2, not -1: a texture WAS requested here, so a
                     // missing file needs to look different in the
                     // shader from "no texture was ever specified" - see
@@ -1403,30 +1485,27 @@ public final class PbdRenderer implements AutoCloseable {
                     // would look like it did nothing at all, because the
                     // texture was never the thing being shown either way.
                     textureLayer = (layer >= 0) ? layer : -2f;
-                    // uvScale= alone (no U/V suffix) still works and sets
-                    // BOTH axes - a hand-edited or older file with the
-                    // old scalar field isn't broken by this change.
-                    // uvScaleU=/uvScaleV= override it independently when
-                    // present, for exactly the "two axes" need this
-                    // split exists for.
-                    if (override.containsKey("uvScale")) {
-                        uvScaleU = uvScaleV = Float.parseFloat(override.get("uvScale"));
-                    }
-                    if (override.containsKey("uvScaleU")) uvScaleU = Float.parseFloat(override.get("uvScaleU"));
-                    if (override.containsKey("uvScaleV")) uvScaleV = Float.parseFloat(override.get("uvScaleV"));
+                    // uvScale= alone (no U/V suffix) sets BOTH axes; uvScaleU=/uvScaleV= override it
+                    // independently; a negative value mirrors that axis. One reader (MaterialUv) is shared
+                    // with the voxels a shot object is cut into and with the classic mesh renderer, so they
+                    // cannot disagree - and a value that is not a number is reported and ignored, where a
+                    // bare Float.parseFloat here threw out of upload() on a typo in a hot-loaded .pbdmat.
+                    pbd.format.MaterialUv.Scale uv = pbd.format.MaterialUv.of(override, uvProblems);
+                    uvScaleU = uv.u();
+                    uvScaleV = uv.v();
                 }
                 if (override.containsKey("normalMap")) {
-                    int layer = normalTextureArray.layerOf(Path.of(override.get("normalMap")));
+                    int layer = normalTextureArray.layerOf(Path.of(override.get("normalMap")), turns);
                     normalLayer = (layer >= 0) ? layer : -2f;
                 }
                 if (override.containsKey("roughnessMap")) {
-                    int layer = roughnessTextureArray.layerOf(Path.of(override.get("roughnessMap")));
+                    int layer = roughnessTextureArray.layerOf(Path.of(override.get("roughnessMap")), turns);
                     roughnessLayer = (layer >= 0) ? layer : -2f;
                 }
                 if (override.containsKey("reflectivity")) reflectivity = Float.parseFloat(override.get("reflectivity"));
                 if (override.containsKey("transparency")) transparency = Float.parseFloat(override.get("transparency"));
                 if (override.containsKey("displacementMap")) {
-                    displacementLayer = displacementTextureArray.layerOf(Path.of(override.get("displacementMap")));
+                    displacementLayer = displacementTextureArray.layerOf(Path.of(override.get("displacementMap")), turns);
                     // Default scale intentionally small (a fraction of the
                     // canonical unit): with no explicit displacementScale,
                     // this still visibly reads as "surface has texture"
@@ -1436,9 +1515,10 @@ public final class PbdRenderer implements AutoCloseable {
                     displacementScale = override.containsKey("displacementScale")
                         ? Float.parseFloat(override.get("displacementScale")) : 0.02f;
                 }
+                for (String problem : uvProblems) System.out.println("[Materials] " + name + ": " + problem);
             }
-            System.out.printf("[Materials] id=%d name=%s texLayer=%.0f uvScaleU=%.2f uvScaleV=%.2f normalLayer=%.0f roughLayer=%.0f dispLayer=%.0f reflect=%.2f transp=%.2f%n",
-                id, name, textureLayer, uvScaleU, uvScaleV, normalLayer, roughnessLayer, displacementLayer, reflectivity, transparency);
+            System.out.printf("[Materials] id=%d name=%s texLayer=%.0f uvScaleU=%.2f uvScaleV=%.2f uvRotation=%d normalLayer=%.0f roughLayer=%.0f dispLayer=%.0f reflect=%.2f transp=%.2f%n",
+                id, name, textureLayer, uvScaleU, uvScaleV, turns * 90, normalLayer, roughnessLayer, displacementLayer, reflectivity, transparency);
             buf.putFloat(entry.r).putFloat(entry.g).putFloat(entry.b).putFloat(1f); // baseColor (vec4, alpha unused)
             buf.putFloat(entry.shininess);
             buf.putFloat(entry.specularStrength);
@@ -1570,16 +1650,6 @@ public final class PbdRenderer implements AutoCloseable {
     // FLAT_LEVEL in pbd.tesc exactly. Must stay in sync with that constant.
     private static final float FLAT_LEVEL = 1f;
 
-    /** "x"/"y"/"z" (case-insensitive) -> 0/1/2, matching pbd.tese's applyBend cyclic convention. Defaults to 0 (x) for null/unrecognized input. */
-    static float axisIndex(String axis) {
-        if (axis == null) return 0f;
-        return switch (axis.trim().toLowerCase()) {
-            case "y" -> 1f;
-            case "z" -> 2f;
-            default -> 0f;
-        };
-    }
-
     /**
      * Sums the per-patch triangle count across every patch, using the same
      * distance -> level formula as pbd.tesc, and the same round/flat axis
@@ -1614,11 +1684,8 @@ public final class PbdRenderer implements AutoCloseable {
             return Math.round(4.0 * level - 2.0);
         }
         if ("cube".equals(type)) {
-            float base = Float.parseFloat(inst.params.getOrDefault("smooth", "0"));
-            float sx = Float.parseFloat(inst.params.getOrDefault("smoothX", String.valueOf(base)));
-            float sy = Float.parseFloat(inst.params.getOrDefault("smoothY", String.valueOf(base)));
-            float sz = Float.parseFloat(inst.params.getOrDefault("smoothZ", String.valueOf(base)));
-            if (sx > 0.001f || sy > 0.001f || sz > 0.001f) {
+            float[] smooth = PrimitiveParts.cubeSmoothness(inst);
+            if (smooth[0] > 0.001f || smooth[1] > 0.001f || smooth[2] > 0.001f) {
                 return Math.round(2.0 * level * level);
             }
         }
@@ -1656,10 +1723,10 @@ public final class PbdRenderer implements AutoCloseable {
     // result's own message, play the SFX if result.hit(). Every voxel-
     // destruction helper this project built up over several turns
     // (applyCraterAdaptive's true anisotropic crater application,
-    // computeCraterRemovedSet's ray-cast crater, buildVoxelColorFn's
-    // texture-pixel sampling from voxelTexturePixels) moved here as
-    // private methods rather than being reimplemented - same logic,
-    // same fixes, new home.
+    // computeCraterRemovedSet's ray-cast crater, and the texture colours
+    // - first sampled from voxelTexturePixels, now read by the shader's
+    // own mapping run backwards, buildVoxelFaceColor / VoxelTextureMapper)
+    // moved here as private methods rather than being reimplemented.
     // ===================================================================
 
     /** hit: whether anything was actually destroyed/further-carved this
@@ -1670,8 +1737,15 @@ public final class PbdRenderer implements AutoCloseable {
      * message: a ready-to-print, already-detailed log line - the same
      * information this project's own console output already carried when
      * this logic lived in Main.java, just returned instead of printed
-     * directly, so the caller decides whether/how to surface it. */
-    public record DestructionResult(boolean hit, String message) {}
+     * directly, so the caller decides whether/how to surface it.
+     * fractured: a connection too narrow to hold broke in this hit - a whole piece
+     * came away with a break, not just a crater (the cue for a different effect).
+     * breakSound: the sound the MATERIAL of what broke names (its breakSound= in the
+     * .pbdmat; BreakProfile), or null when nothing broke or the material names none -
+     * the caller plays it when it is not null. */
+    public record DestructionResult(boolean hit, String message, boolean fractured, String breakSound) {
+        public DestructionResult(boolean hit, String message) { this(hit, message, false, null); }
+    }
 
     /** Everything a G hit does that does not need a GPU - the crater, what
      * stays attached, what breaks off and falls, the physics of the falling
@@ -1696,18 +1770,20 @@ public final class PbdRenderer implements AutoCloseable {
 
         @Override public void hideInstance(int index) { PbdRenderer.this.hideInstance(index); }
 
-        @Override public DestructionWorld.Style styleFor(PbdInstance original, PbdInstance voxelized, int gridSize, float voxelWorldSize) {
+        @Override public DestructionWorld.Style styleFor(PbdInstance original, PbdInstance voxelized, pbd.voxel.PrimitiveVoxelizer.Result grid) {
             var matFields = scene.materialOverrides.get(original.material);
             float[] flatColor = {0.62f, 0.63f, 0.66f};
             if (matFields != null && matFields.get("color") != null) {
                 float[] parsed = parseColorTriple(matFields.get("color"));
                 if (parsed != null) flatColor = parsed;
             }
-            return new DestructionWorld.Style(buildVoxelColorFn(voxelized, matFields, flatColor, gridSize, voxelWorldSize), flatColor);
+            BreakProfile profile = breakProfileOf(original.material, matFields);
+            pbd.voxel.VoxelMeshBuilder.FaceColor texture = buildVoxelFaceColor(original, grid, matFields, flatColor);
+            return texture != null ? DestructionWorld.Style.textured(texture, flatColor, profile) : DestructionWorld.Style.flat(flatColor, profile);
         }
 
         @Override public pbd.classicmesh.ClassicMeshRenderer buildMesh(List<int[]> entries, float voxelWorldSize, DestructionWorld.Style style) {
-            var colored = pbd.voxel.VoxelMeshBuilder.buildMeshWithColor(entries, voxelWorldSize, style.colorFn);
+            var colored = pbd.voxel.VoxelMeshBuilder.buildMeshWithColor(entries, voxelWorldSize, style.faceColor, true, style.perVoxelColour);
             return buildVoxelMeshRenderer(colored.meshData, colored.colors, style.fallback);
         }
 
@@ -1726,7 +1802,24 @@ public final class PbdRenderer implements AutoCloseable {
         DestructionWorld.Outcome outcome = destruction().destroyAt(
             new Vector3d(rayOrigin.x, rayOrigin.y, rayOrigin.z),
             new Vector3d(rayDir.x, rayDir.y, rayDir.z), candidate);
-        return new DestructionResult(outcome.hit(), outcome.message());
+        return new DestructionResult(outcome.hit(), outcome.message(), outcome.fractured(), outcome.breakSound());
+    }
+
+    /** Materials whose break keys already had their problems printed, so a typo in a .pbdmat is reported once, not at every shot. Cleared with the destruction world, so a scene loaded again reports again. */
+    private final java.util.Set<String> breakWarned = new java.util.HashSet<>();
+
+    /**
+     * How the material of a shot object breaks: BreakProfile.of over the raw fields of its .pbdmat block (the primitive's own
+     * metadata has no say). Read at the moment of the shot, not kept - a material edited and hot-loaded between two shots is
+     * read again. Whatever the block gets wrong (a number out of range, an unknown key) is printed once per material, and the
+     * key takes its default.
+     */
+    private BreakProfile breakProfileOf(String material, Map<String, String> fields) {
+        BreakProfile profile = BreakProfile.of(material, fields);
+        if (!profile.warnings.isEmpty() && breakWarned.add(String.valueOf(material))) {
+            for (String w : profile.warnings) System.out.println("[Break] " + w);
+        }
+        return profile;
     }
 
     /** Advances the pieces a G hit broke off (gravity, floor, landing on
@@ -1763,6 +1856,19 @@ public final class PbdRenderer implements AutoCloseable {
         }
     }
 
+    /** A renderer for a mesh with no per-vertex colour (the shared particle cube): the colour is set on the renderer before each draw. */
+    private pbd.classicmesh.ClassicMeshRenderer buildVoxelMeshRendererPlain(pbd.format.PbdMeshData meshData) {
+        try {
+            pbd.classicmesh.ObjMesh objMesh = new pbd.classicmesh.ObjMesh(meshData.toPositionNormalUvInterleaved(), meshData.indices, true, null);
+            pbd.classicmesh.ClassicMeshRenderer meshRenderer = new pbd.classicmesh.ClassicMeshRenderer(Path.of("src/main/resources/shaders/classic"), objMesh);
+            meshRenderer.baseColor = new float[]{0.62f, 0.63f, 0.66f};
+            return meshRenderer;
+        } catch (java.io.IOException e) {
+            System.err.println("[Destroy] Failed to create the particle renderer: " + e.getMessage());
+            return null;
+        }
+    }
+
     private static float[] parseColorTriple(String raw) {
         try {
             String inner = raw.trim();
@@ -1777,102 +1883,30 @@ public final class PbdRenderer implements AutoCloseable {
         }
     }
 
-    /** Reads voxelTexturePixels (this class's own field, populated in
-     * upload() from MaterialTextureArray's own already-decoded pixel
-     * data - see that field's own doc for why this never calls
-     * STBImage itself, a real, repeatedly-crash-causing approach this
-     * project tried and moved away from). Per-object-extent box/
-     * triplanar mapping: normalizes a position against THIS object's
-     * own real per-axis extent (gvx/gvy/gvz, recomputed the same way
-     * PrimitiveVoxelizer itself derives them) rather than the shared
-     * octree grid's own span, which for a non-cubic object would
-     * compress almost the whole texture into a tiny sliver - verified
-     * directly against a thin door panel spanning the full 0..1 range
-     * on both axes.
-     *
-     * BiFunction, called once per VERTEX (worldPos - VoxelMeshBuilder's
-     * own addFace calls this per corner of every face, not once per
-     * region) rather than the single Function<int[],float[]> (once per
-     * REGION) this used to be - a real, confirmed, directly-reported
-     * bug: a merged region can be dozens of voxels across (most of a
-     * real object's own surface stays merged this large - see
-     * PrimitiveVoxelizer's own doc on why untouched interior regions
-     * aren't expanded), and sampling ONE color at that region's own
-     * corner, then flat-shading its whole box with it, discarded
-     * essentially all of the real texture's own detail across
-     * anything but the smallest, crater-adjacent pieces - visible
-     * directly as blocky, single-color patches/streaks where real
-     * texture variation should have been. worldPos is the SAME world-
-     * space coordinate system addBox already builds its box corners
-     * in (voxel-grid units times voxelWorldSize) - dividing back by
-     * voxelWorldSize here recovers grid-space, floating-point this
-     * time rather than one region's own integer corner, so each of a
-     * large region's 4 corners per face now samples a DIFFERENTLY
-     * positioned texel, and the GPU's own rasterizer interpolates
-     * smoothly between them across the face - not per-fragment GPU
-     * texture sampling (a real further improvement, not attempted
-     * here - see this method's own roadmap entry), but a genuine
-     * gradient instead of one flat color no matter how large the
-     * block. */
-    private java.util.function.BiFunction<int[], float[], float[]> buildVoxelColorFn(
-            PbdInstance inst, Map<String, String> matFields, float[] fallbackColor,
-            int gridSize, float voxelWorldSize) {
+    /**
+     * The colour of the faces of the voxels an object is cut into. A material with a texture gives every corner of every face the
+     * texel the GPU shows at that point of the object ({@link pbd.voxel.VoxelTextureMapper}: the shader's own mapping run backwards,
+     * so the picture keeps its orientation, its UV scale - negative mirrors - and its modifiers when the object breaks); the pixels
+     * come from {@link #voxelTexturePixelsFor}, which {@link #upload} fills from the arrays the GPU textures were built from (this
+     * never decodes an image itself, and it is read at the moment of the shot, so a texture hot-loaded between two shots is the
+     * one used). A mesh takes the texture through the UVs of its own triangles ({@link pbd.voxel.MeshTextureMapper}). Whatever
+     * cannot be mapped - no texture, no pixels, no surface to map onto - gives null: the flat colour of the material.
+     */
+    private pbd.voxel.VoxelMeshBuilder.FaceColor buildVoxelFaceColor(PbdInstance original, pbd.voxel.PrimitiveVoxelizer.Result grid,
+                                                                    Map<String, String> matFields, float[] flatColor) {
         String texturePath = matFields != null ? matFields.get("texture") : null;
-        if (texturePath == null) return (voxel, worldPos) -> fallbackColor;
+        if (texturePath == null || grid == null) return null;
 
-        VoxelTexturePixels tex = voxelTexturePixelsFor(texturePath);
+        List<String> problems = new ArrayList<>();
+        pbd.format.MaterialUv.Scale scale = pbd.format.MaterialUv.of(matFields, problems);
+        int turns = pbd.format.MaterialUv.quarterTurns(matFields, problems);
+        for (String problem : problems) System.out.println("[Destroy] material '" + original.material + "': " + problem);
+        VoxelTexturePixels tex = voxelTexturePixelsFor(texturePath, turns);
         if (tex == null) {
             System.out.println("[Destroy] No pre-decoded pixel data for texture '" + texturePath + "' - using flat color instead");
-            return (voxel, worldPos) -> fallbackColor;
+            return null;
         }
-
-        int texW = tex.width(), texH = tex.height();
-        byte[] pixelBytes = tex.pixelBytes();
-        // taperMaxScale mirrors PrimitiveVoxelizer.voxelize()'s own
-        // identically-named local exactly (same loop, same formula) -
-        // gvx/gvz here have to agree with the REAL gridX/gridZ that
-        // method actually built the octree at, or every voxel's own
-        // nx/nz below is normalized against the wrong extent (visibly
-        // wrong for a widening taper specifically, since the grid
-        // there is now genuinely wider than a plain inst.scale.x/z
-        // recomputation accounts for - narrowing and identity tapers
-        // are unaffected, matching PrimitiveVoxelizer's own doc on why
-        // max(...,1f) never shrinks anything). Duplicated rather than
-        // read off a stored field because PrimitiveVoxelizer.Result
-        // does not currently expose its own gridX/gridY/gridZ, only
-        // the already-centered gridOriginLocal - re-deriving here is
-        // small and cheap, unlike carrying a wider result type through
-        // every caller.
-        float taperMaxScale = 1f;
-        for (pbd.format.PbdModifier mod : inst.modifiers) {
-            if ("taper".equals(mod.type)) {
-                float bottomScale = mod.getFloat("bottomScale", 1f);
-                float topScale = mod.getFloat("topScale", 1f);
-                taperMaxScale = Math.max(taperMaxScale, Math.max(Math.abs(bottomScale), Math.abs(topScale)));
-            }
-        }
-        int gvx = Math.max(1, Math.round(inst.scale.x * taperMaxScale / voxelWorldSize));
-        int gvy = Math.max(1, Math.round(inst.scale.y / voxelWorldSize));
-        int gvz = Math.max(1, Math.round(inst.scale.z * taperMaxScale / voxelWorldSize));
-        int foX = (gridSize - gvx) / 2, foY = (gridSize - gvy) / 2, foZ = (gridSize - gvz) / 2;
-        return (voxel, worldPos) -> {
-            float nx = (worldPos[0] / voxelWorldSize - foX) / (float) gvx;
-            float ny = (worldPos[1] / voxelWorldSize - foY) / (float) gvy;
-            float nz = (worldPos[2] / voxelWorldSize - foZ) / (float) gvz;
-            float dx = Math.abs(nx - 0.5f), dy = Math.abs(ny - 0.5f), dz = Math.abs(nz - 0.5f);
-            float u, v;
-            if (dx >= dy && dx >= dz) { u = nz; v = ny; }
-            else if (dy >= dx && dy >= dz) { u = nx; v = nz; }
-            else { u = nx; v = ny; }
-            int px = Math.floorMod((int) (u * texW), texW);
-            int py = Math.floorMod((int) (v * texH), texH);
-            int idx = (py * texW + px) * 4;
-            return new float[]{
-                (pixelBytes[idx] & 0xFF) / 255f,
-                (pixelBytes[idx + 1] & 0xFF) / 255f,
-                (pixelBytes[idx + 2] & 0xFF) / 255f
-            };
-        };
+        return pbd.voxel.VoxelTextureMapper.faceColor(grid, tex.pixelBytes(), tex.width(), tex.height(), scale, flatColor);
     }
 
     /** Draws every destroyed instance's own current voxel-debris mesh and
@@ -1905,6 +1939,36 @@ public final class PbdRenderer implements AutoCloseable {
                 .translate((float) -b.comMesh.x, (float) -b.comMesh.y, (float) -b.comMesh.z);
             chunk.mesh.render(camera, aspectRatio, world);
         }
+        drawParticles(camera, aspectRatio);
+    }
+
+    /** The cube every particle is drawn with (ParticleDraw.cube()): one mesh for all of them, built on the first particle, freed with the destruction world. */
+    private pbd.classicmesh.ClassicMeshRenderer particleCube;
+    private final ParticleSystem.View particleView = new ParticleSystem.View();
+    private final Matrix4f particleMatrix = new Matrix4f();
+
+    /**
+     * The chips a hit threw up, one draw of the shared cube each: its colour set to the particle's, its matrix to
+     * ParticleDraw.matrix (position, turn, size - already shrunk by the fade). At most ParticleSystem.MAX_PARTICLES of them,
+     * and a particle that has faded to nothing is not drawn. Nothing here decides anything a test could not see: the
+     * simulation is ParticleSystem, the matrix is ParticleDraw.
+     */
+    private void drawParticles(FlyCamera camera, float aspectRatio) {
+        ParticleSystem particles = destruction.particles();
+        int n = particles.count();
+        if (n == 0) return;
+        if (particleCube == null) {
+            particleCube = buildVoxelMeshRendererPlain(ParticleDraw.cube());
+            if (particleCube == null) return; // buildVoxelMeshRendererPlain logged why; the chips are simply not drawn
+        }
+        for (int i = 0; i < n; i++) {
+            particles.view(i, particleView);
+            if (!(particleView.size > 0f)) continue;
+            particleCube.baseColor[0] = particleView.r;
+            particleCube.baseColor[1] = particleView.g;
+            particleCube.baseColor[2] = particleView.b;
+            particleCube.render(camera, aspectRatio, ParticleDraw.matrix(particleView, particleMatrix));
+        }
     }
 
     /** Whether anything is currently voxel-destroyed (remains or falling
@@ -1935,6 +1999,11 @@ public final class PbdRenderer implements AutoCloseable {
             destruction.clear();
             destruction = null;
         }
+        if (particleCube != null) {
+            particleCube.close();
+            particleCube = null;
+        }
+        breakWarned.clear();
     }
 
     public void render(FlyCamera camera, float aspectRatio) {
@@ -2027,6 +2096,12 @@ public final class PbdRenderer implements AutoCloseable {
         long triangleTotal = 0;
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            // The two matrices of a draw are taken from the thread's stack ONCE, here, and reused by every instance: what is taken from the
+            // stack is given back only when this frame is popped, the stack is 64 KB, and two 64-byte matrices per instance inside the loop
+            // ran it out at about 500 instances ("Out of stack space") - a scene of ten thousand never drew its first image.
+            // (The view-projection is the same for every instance of a frame, so it is also worked out once.)
+            java.nio.FloatBuffer worldMatrixBuffer = stack.mallocFloat(16);
+            java.nio.FloatBuffer viewProjBuffer = camera.viewProj(aspectRatio).get(stack.mallocFloat(16));
             for (int i = 0; i < scene.instances.size(); i++) {
                 PbdInstance inst = scene.instances.get(i);
                 if (inst.type.equals("group")) continue; // pbd_ref anchor - no geometry, nothing to bake or draw
@@ -2068,8 +2143,8 @@ public final class PbdRenderer implements AutoCloseable {
                     glBindTexture(GL_TEXTURE_2D_ARRAY, displacementTextureArrayGlId);
                 }
 
-                glUniformMatrix4fv(CACHED_LOC_WORLD, false, worldTransforms[i].get(stack.mallocFloat(16)));
-                glUniformMatrix4fv(CACHED_LOC_VIEW_PROJ, false, camera.viewProj(aspectRatio).get(stack.mallocFloat(16)));
+                glUniformMatrix4fv(CACHED_LOC_WORLD, false, worldTransforms[i].get(worldMatrixBuffer));
+                glUniformMatrix4fv(CACHED_LOC_VIEW_PROJ, false, viewProjBuffer);
                 glUniform3f(CACHED_LOC_CAMERA_POS, camera.position.x, camera.position.y, camera.position.z);
                 glUniform3f(CACHED_LOC_LIGHT_DIR, lightDir[0], lightDir[1], lightDir[2]);
                 glUniform1i(CACHED_LOC_LIGHT_COUNT, lightCount);

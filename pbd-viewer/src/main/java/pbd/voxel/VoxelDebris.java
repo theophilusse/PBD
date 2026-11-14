@@ -56,12 +56,15 @@ public final class VoxelDebris {
         public final List<VoxelConnectivity.Component> chunks;
         public final int dustPieces;
         public final long dustVoxels;
+        /** The cubes of the dust pieces: too small to simulate, so they are not kept - but they are not simply made to vanish either, the world throws them up as particles. */
+        public final List<int[]> dustCubes;
 
-        Split(List<int[]> base, List<VoxelConnectivity.Component> chunks, int dustPieces, long dustVoxels) {
+        Split(List<int[]> base, List<VoxelConnectivity.Component> chunks, int dustPieces, long dustVoxels, List<int[]> dustCubes) {
             this.base = base;
             this.chunks = chunks;
             this.dustPieces = dustPieces;
             this.dustVoxels = dustVoxels;
+            this.dustCubes = dustCubes;
         }
     }
 
@@ -78,7 +81,7 @@ public final class VoxelDebris {
         List<int[]> base = new ArrayList<>();
         List<VoxelConnectivity.Component> detached = new ArrayList<>();
 
-        if (comps.isEmpty()) return new Split(base, detached, 0, 0);
+        if (comps.isEmpty()) return sorted(base, detached);
 
         if (grounded) {
             for (VoxelConnectivity.Component c : comps) {
@@ -91,14 +94,28 @@ public final class VoxelDebris {
             for (int i = 1; i < comps.size(); i++) detached.add(comps.get(i));
         }
 
+        return sorted(base, detached);
+    }
+
+    /**
+     * What is left of a piece that is already falling, after a hit: nothing stays (there is no base), every piece the hit left
+     * of it is detached - the biggest of them too - and sorted into chunks worth simulating and dust.
+     */
+    public static Split fall(List<int[]> surviving) {
+        return sorted(new ArrayList<>(), VoxelConnectivity.split(surviving));
+    }
+
+    /** The detached pieces (biggest first) as chunks worth simulating - at least MIN_CHUNK_VOXELS, and at most MAX_CHUNKS_PER_HIT of them - and dust. */
+    private static Split sorted(List<int[]> base, List<VoxelConnectivity.Component> detached) {
         List<VoxelConnectivity.Component> chunks = new ArrayList<>();
+        List<int[]> dustCubes = new ArrayList<>();
         int dust = 0;
         long dustVox = 0;
         for (VoxelConnectivity.Component c : detached) { // already biggest first
             if (c.volume >= MIN_CHUNK_VOXELS && chunks.size() < MAX_CHUNKS_PER_HIT) chunks.add(c);
-            else { dust++; dustVox += c.volume; }
+            else { dust++; dustVox += c.volume; dustCubes.addAll(c.entries); }
         }
-        return new Split(base, chunks, dust, dustVox);
+        return new Split(base, chunks, dust, dustVox, dustCubes);
     }
 
     /**

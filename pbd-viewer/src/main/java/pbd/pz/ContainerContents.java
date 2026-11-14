@@ -223,6 +223,31 @@ public final class ContainerContents {
         return contents;
     }
 
+    /**
+     * Contents with nothing in them yet, for the boxes {@code metaIndices} (their volumes in the same order): what a scene that
+     * fills its containers by hand starts from - {@link #loadRandom} is how the game fills them from a folder of models.
+     * Items go in with {@link #place}.
+     */
+    public static ContainerContents empty(List<Integer> metaIndices, List<BinPacker.ContainerVolume> containerVolumes) {
+        return new ContainerContents(metaIndices, containerVolumes);
+    }
+
+    /**
+     * Puts an item in by hand: {@code bounds} is its size, {@code containerIndex} the position of its box in {@link #metaIndices},
+     * (x, y, z) where its centre is, relative to the centre of that box (before the box's own rotation), {@code scaleFactor} how
+     * much it is shrunk (1 = not). {@code mesh} is what is drawn - null for a pure-logic caller that never draws it; the mesh is
+     * taken to be centred on its own origin. Returns the item, which is also in {@link #items}.
+     */
+    public PlacedItem place(String sourceFile, ObjMesh mesh, BinPacker.Item bounds, int containerIndex,
+                            float x, float y, float z, float scaleFactor) {
+        if (containerIndex < 0 || containerIndex >= metaIndices.size()) {
+            throw new IllegalArgumentException("no box #" + containerIndex + ": this container has " + metaIndices.size());
+        }
+        PlacedItem item = new PlacedItem(sourceFile, mesh, bounds, containerIndex, x, y, z, 0f, 0f, 0f, scaleFactor);
+        items.add(item);
+        return item;
+    }
+
     /** Advances the falling simulation by dt seconds - call once per
      * frame regardless of whether anything is currently falling (cheap
      * no-op when nothing is). */
@@ -270,16 +295,6 @@ public final class ContainerContents {
         return highestSupport;
     }
 
-    /** Removes the item whose current world-space position is closest to
-     * the ray, if the ray actually passes near it - marks every
-     * remaining item in the SAME container currently resting above the
-     * removed one's footprint as falling. containerWorldCenters must be
-     * indexed the same way as metaIndices/containerVolumes (i.e.
-     * containerWorldCenters.get(i) is the world center of the box at
-     * metaIndices.get(i)) - Main.java builds this list that way already,
-     * from renderer.instanceWorldCenter(metaIndices.get(i)) for each i.
-     * Returns the removed item's source filename, or null if the ray hit
-     * nothing. */
     /** World position of a placed item - the container's own world
      * center PLUS the item's local offset, with that offset ROTATED by
      * the container's own world rotation first. Shared by
@@ -301,8 +316,15 @@ public final class ContainerContents {
         return String.format("(%.3f, %.3f, %.3f)", v.x, v.y, v.z);
     }
 
-    public String removeNearestToRay(List<Vector3f> containerWorldCenters, List<Quaternionf> containerWorldRotations,
-                                      Vector3f rayOrigin, Vector3f rayDir) {
+    /** The item a ray goes through, and how far along the ray its centre is: what {@link #nearestToRay} finds, before anything is taken. */
+    public record Hit(PlacedItem item, float distance) {}
+
+    /**
+     * The item nearest the eye whose ball (its centre and a radius of 60 % of its longest side, at least 8 cm) the ray goes
+     * through - without taking it. Null when the ray goes through none. Prints the per-item numbers (see the note in the body).
+     */
+    public Hit nearestToRay(List<Vector3f> containerWorldCenters, List<Quaternionf> containerWorldRotations,
+                            Vector3f rayOrigin, Vector3f rayDir) {
         PlacedItem closest = null;
         float closestDist = Float.MAX_VALUE;
         // Diagnostic logging: repeated, specific reports that E never
@@ -337,12 +359,11 @@ public final class ContainerContents {
                 closest = item;
             }
         }
-        if (closest == null) {
-            System.out.println("[E-key] nothing hit");
-            return null;
-        }
-        System.out.println("[E-key] removing " + closest.sourceFile);
+        return closest == null ? null : new Hit(closest, closestDist);
+    }
 
+    /** Takes an item out. Whatever rests above it in the same box (overlapping it on the floor plan) starts to fall. */
+    public void removeItem(PlacedItem closest) {
         items.remove(closest);
         for (PlacedItem other : items) {
             if (other.containerIndex != closest.containerIndex) continue;
@@ -354,6 +375,65 @@ public final class ContainerContents {
                 other.falling = true;
             }
         }
-        return closest.sourceFile;
+    }
+
+    /**
+     * Removes the item nearest the eye that the ray goes through (see {@link #nearestToRay}), if any, and marks every remaining
+     * item in the SAME container resting above its footprint as falling. {@code containerWorldCenters} must be indexed the same
+     * way as metaIndices/containerVolumes (containerWorldCenters.get(i) is the world centre of the box at metaIndices.get(i)).
+     * Returns the removed item's source file name, or null when the ray went through nothing.
+     */
+    public String removeNearestToRay(List<Vector3f> containerWorldCenters, List<Quaternionf> containerWorldRotations,
+                                      Vector3f rayOrigin, Vector3f rayDir) {
+        Hit hit = nearestToRay(containerWorldCenters, containerWorldRotations, rayOrigin, rayDir);
+        if (hit == null) {
+            System.out.println("[E-key] nothing hit");
+            return null;
+        }
+        System.out.println("[E-key] removing " + hit.item().sourceFile);
+        removeItem(hit.item());
+        return hit.item().sourceFile;
+    }
+
+    /** An item of one of several open containers that the ray goes through: take() removes it and says which file it was. */
+    public record Pick(ContainerContents contents, Hit hit) {
+        public double distance() { return hit.distance(); }
+
+        public String take() {
+            System.out.println("[E-key] removing " + hit.item().sourceFile);
+            contents.removeItem(hit.item());
+            return hit.item().sourceFile;
+        }
+    }
+
+    /**
+     * The nearest item, over every open container, that the ray goes through - or null. {@code centerOf} and {@code rotationOf}
+     * answer where the box with a given instance index stands now (a container is a group of boxes, see {@link #metaIndices}).
+     * Nothing is taken: the caller decides, and calls {@link Pick#take}.
+     */
+    public static Pick nearestAmong(java.util.Collection<ContainerContents> open, java.util.function.IntFunction<Vector3f> centerOf,
+                                    java.util.function.IntFunction<Quaternionf> rotationOf, Vector3f rayOrigin, Vector3f rayDir) {
+        System.out.println("[E-key] " + open.size() + " open container group(s) to check"
+            + (open.isEmpty() ? " - nothing is open right now" : ""));
+        Pick best = null;
+        for (ContainerContents contents : open) {
+            List<Vector3f> centers = new ArrayList<>();
+            List<Quaternionf> rotations = new ArrayList<>();
+            for (int idx : contents.metaIndices) {
+                Vector3f center = centerOf.apply(idx);
+                Quaternionf rot = rotationOf.apply(idx);
+                centers.add(center);
+                rotations.add(rot);
+                // The container's OWN transform, fresh every press - if the box holding these items has moved/rotated since the items
+                // were placed (or if the world centre/rotation are clearly wrong - NaN, a position nowhere near where this container
+                // visually is), that surfaces right here, BEFORE it reaches a single item's own distance check.
+                System.out.println("  [E-key] container instance #" + idx + " world center=" + center
+                    + " rotation(xyzw)=" + rot.x + "," + rot.y + "," + rot.z + "," + rot.w);
+            }
+            System.out.println("  [E-key] group has " + contents.items.size() + " item(s) placed in it");
+            Hit hit = contents.nearestToRay(centers, rotations, rayOrigin, rayDir);
+            if (hit != null && (best == null || hit.distance() < best.distance())) best = new Pick(contents, hit);
+        }
+        return best;
     }
 }

@@ -64,6 +64,11 @@ public final class PbdInstance {
     // to some arbitrary "on" value, so a non-light instance's fields
     // stay visibly unset rather than carrying meaningless zeros.
     public String lightMode;      // "point" or "spot" - null if this instance isn't a light at all
+    /**
+     * The free-form instance field (kept in {@link #params}) that names the click a light makes when the player switches it with E: a file
+     * of the sounds folder. Absent or empty = the engine's default click (pbd.audio.GameSounds.LIGHT_SWITCH).
+     */
+    public static final String SWITCH_SOUND_KEY = "switchSound";
     public boolean lightEnabled = true; // runtime on/off (a light switch, say) - kept separate from lightIntensity so toggling off and back on doesn't lose the authored brightness
     public Vector3f lightColor;   // rgb, 0..1 each - null if not a light
     public Float lightIntensity;  // arbitrary brightness scale, no fixed unit (matches shininess/specularStrength's own "authored, not physical" convention)

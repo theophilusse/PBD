@@ -1,5 +1,7 @@
 package pbd.format;
 
+import pbd.net.CappedRead;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -102,6 +104,17 @@ public final class PbdAssetFormat {
         }
     }
 
+    /** A name as it is put in a message: a hostile one can be long and hold control characters. */
+    private static String printable(String name) {
+        String cut = name.length() > 80 ? name.substring(0, 80) + "..." : name;
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < cut.length(); i++) {
+            char c = cut.charAt(i);
+            out.append(c < ' ' || c == 0x7f ? '?' : c);
+        }
+        return out.toString();
+    }
+
     public static final class UnpackResult {
         public Manifest manifest;
         public Path scenePbd;
@@ -109,21 +122,61 @@ public final class PbdAssetFormat {
         public final Map<String, Path> extraFiles = new LinkedHashMap<>();
     }
 
+    /** How much a bundle may ask for: the most entries, the most one may weigh when unpacked, the most all of them may weigh together. */
+    public static final class Limits {
+        public final int maxEntries;
+        public final long maxEntryBytes;
+        public final long maxTotalBytes;
+
+        public Limits(int maxEntries, long maxEntryBytes, long maxTotalBytes) {
+            this.maxEntries = maxEntries;
+            this.maxEntryBytes = maxEntryBytes;
+            this.maxTotalBytes = maxTotalBytes;
+        }
+
+        /** The engine's own: {@link PbdLimits}. Smaller ones are for a caller that knows better (and for tests of the boundaries). */
+        public static Limits standard() {
+            return new Limits(PbdLimits.MAX_ASSET_ENTRIES, PbdLimits.MAX_ASSET_ENTRY_BYTES, PbdLimits.MAX_ASSET_TOTAL_BYTES);
+        }
+    }
+
     /** Extracts every entry into outputDir, preserving the archive's own
      * relative paths (so "materials/wood.pbdmat" lands at
      * outputDir/materials/wood.pbdmat, ready for scene.pbd's own
      * include_material to find it there unchanged). */
     public static UnpackResult unpack(Path assetFile, Path outputDir) throws IOException {
+        return unpack(assetFile, outputDir, Limits.standard());
+    }
+
+    /** {@link #unpack(Path, Path)} with the limits of the caller's choosing. */
+    public static UnpackResult unpack(Path assetFile, Path outputDir, Limits limits) throws IOException {
         UnpackResult result = new UnpackResult();
         Files.createDirectories(outputDir);
 
+        // A bundle comes from anywhere. What an entry is called decides where it is written (an entry named "../../x" would land
+        // outside outputDir), and what it weighs is not what its header says: so names are checked, and the bytes counted as they are read.
+        int entries = 0;
+        long total = 0;
         try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(assetFile))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) continue;
-                Path target = outputDir.resolve(entry.getName());
+                if (++entries > limits.maxEntries) {
+                    throw new IOException("'" + assetFile.getFileName() + "' holds more than " + limits.maxEntries + " files - refused");
+                }
+                Path target = PbdLimits.entryTarget(outputDir, entry.getName());
+                if (target == null) {
+                    throw new IOException("'" + assetFile.getFileName() + "' has an entry whose name is not a plain relative path ("
+                        + printable(entry.getName()) + ") - refused");
+                }
+                byte[] content = CappedRead.readAll(zip, limits.maxEntryBytes, "the entry '" + printable(entry.getName()) + "'");
+                total += content.length;
+                if (total > limits.maxTotalBytes) {
+                    throw new IOException("'" + assetFile.getFileName() + "' expands to more than "
+                        + CappedRead.describe(limits.maxTotalBytes) + " - refused");
+                }
                 Files.createDirectories(target.getParent());
-                Files.write(target, zip.readAllBytes());
+                Files.write(target, content);
 
                 switch (entry.getName()) {
                     case "manifest.txt" -> result.manifest = Manifest.fromText(Files.readString(target, StandardCharsets.UTF_8));

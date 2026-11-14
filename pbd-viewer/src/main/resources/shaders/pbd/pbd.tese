@@ -381,7 +381,8 @@ struct PbdMaterialGpu {
     float shininess;
     float specularStrength;
     float textureLayer;
-    float uvScale;
+    float uvScaleU;
+    float uvScaleV;
     float normalMapLayer;
     float roughnessMapLayer;
     float reflectivity;
@@ -447,7 +448,7 @@ void main() {
     // units directly - displacementScale is authored with that in mind.
     PbdMaterialGpu dispMat = materials[inst.materialID];
     if (dispMat.displacementLayer >= 0.0) {
-        float height = texture(displacementTextures, vec3(vUV * dispMat.uvScale, dispMat.displacementLayer)).r;
+        float height = texture(displacementTextures, vec3(vUV * vec2(dispMat.uvScaleU, dispMat.uvScaleV), dispMat.displacementLayer)).r;
         pos += nrm * (height - 0.5) * dispMat.displacementScale;
     }
 

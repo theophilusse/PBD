@@ -21,9 +21,12 @@ import java.util.Arrays;
  * by more than a rounding error. Pure data in, boolean out, no GL - runs
  * under tools/regression like the rest of the lever-arm chain.
  *
- * Remembers only WHICH lights were enabled when {@link #remember} ran (the
- * set the buffer was built from): enabling or disabling one is a rebuild
- * the caller already does on its own (uploadLights), and ends in remember.
+ * Remembers WHICH lights were enabled when {@link #remember} ran (the set
+ * the buffer was built from), so {@link #switched} can tell when one has
+ * since been switched on or off: PbdEngine.SceneHandle.toggleLight and
+ * setLightEnabled only flip a flag in the scene, nothing in them reaches the
+ * GPU buffer, and until this check existed a switched light changed on
+ * screen only if something else happened to rebuild the buffer.
  */
 public final class LightTracker {
 
@@ -63,6 +66,22 @@ public final class LightTracker {
             }
         }
         return false;
+    }
+
+    /**
+     * Whether the set of enabled lights is no longer the one remember() saw: a light was switched on or off since the buffer was
+     * built (by the facade, or by a door it follows - see LightLinks), or the scene gained or lost one. Never changes the
+     * snapshot - the caller rebuilds the buffer and calls remember() again.
+     */
+    public boolean switched(PbdScene scene) {
+        int n = 0; // how many enabled lights so far; they come in scene order, like the remembered ones
+        for (int i = 0; i < scene.instances.size(); i++) {
+            PbdInstance inst = scene.instances.get(i);
+            if (!"light".equals(inst.type) || !inst.lightEnabled) continue;
+            if (n >= lights.length || lights[n] != i) return true;
+            n++;
+        }
+        return n != lights.length;
     }
 
     /** How many enabled lights are being tracked. */

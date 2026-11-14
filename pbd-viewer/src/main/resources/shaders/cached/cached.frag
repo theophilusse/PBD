@@ -5,7 +5,8 @@ struct PbdMaterialGpu {
     float shininess;
     float specularStrength;
     float textureLayer;
-    float uvScale;
+    float uvScaleU;
+    float uvScaleV;
     float normalMapLayer;
     float roughnessMapLayer;
     float reflectivity;
@@ -16,6 +17,26 @@ struct PbdMaterialGpu {
 
 layout(std430, binding = 4) readonly buffer MaterialBuffer {
     PbdMaterialGpu materials[];
+};
+
+// Same layout as pbd.frag's own PbdLightGpu - see that file's own doc
+// comment for the exact std430 packing reasoning, identical here since
+// both read from the SAME buffer PbdRenderer.uploadLights writes once
+// per scene load (this cached path and the main tessellation path
+// share lights, same as they already share MaterialBuffer above).
+struct PbdLightGpu {
+    vec3 position;
+    float range;
+    vec3 color;
+    float intensity;
+    vec3 spotDirection;
+    float spotCosAngle;
+    int isSpot;
+    float _pad0, _pad1, _pad2;
+};
+
+layout(std430, binding = 5) readonly buffer LightBuffer {
+    PbdLightGpu lights[];
 };
 
 layout(binding = 0) uniform sampler2DArray materialTextures;
@@ -29,6 +50,7 @@ in vec2 vUV;
 layout(location = 2) uniform vec3 cameraPos;
 layout(location = 3) uniform vec3 lightDir;
 layout(location = 4) uniform uint materialID;
+layout(location = 5) uniform int lightCount;
 
 out vec4 fragColor;
 
@@ -56,7 +78,7 @@ vec3 applyNormalMap(vec3 N, vec3 worldPos, vec2 uv, float layer) {
 
 void main() {
     PbdMaterialGpu mat = materials[materialID];
-    vec2 uv = vUV * mat.uvScale;
+    vec2 uv = vUV * vec2(mat.uvScaleU, mat.uvScaleV);
 
     vec3 n = normalize(vNormal);
     vec3 missingMapTint = vec3(0.0);
@@ -101,6 +123,36 @@ void main() {
     float skyFactor = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
     vec3 ambient = mix(vec3(0.28, 0.25, 0.22), vec3(0.40, 0.43, 0.50), skyFactor);
     vec3 color = base * (ambient + 0.75 * diffuse) + vec3(specular);
+
+    // Point/spot lights - see pbd.frag's own copy of this exact block
+    // for the full reasoning (distance falloff, spot angular falloff,
+    // etc.) - duplicated here rather than shared via a #include, since
+    // this build has no shader-file-inclusion mechanism set up at all.
+    for (int i = 0; i < lightCount; i++) {
+        PbdLightGpu light = lights[i];
+        vec3 toLightVec = light.position - vWorldPos;
+        float dist = length(toLightVec);
+        if (dist >= light.range || dist < 1e-5) continue;
+        vec3 toPointLight = toLightVec / dist;
+
+        float distFalloff = 1.0 - smoothstep(0.0, light.range, dist);
+        float angleFalloff = 1.0;
+        if (light.isSpot == 1) {
+            float cosAngleToPoint = dot(-toPointLight, light.spotDirection);
+            float outerCos = light.spotCosAngle;
+            float innerCos = mix(outerCos, 1.0, 0.2);
+            angleFalloff = smoothstep(outerCos, innerCos, cosAngleToPoint);
+        }
+        if (angleFalloff <= 0.0) continue;
+
+        vec3 lightHalfVec = normalize(toPointLight + toEye);
+        float lightDiffuse = max(dot(n, toPointLight), 0.0);
+        float lightSpecAngle = max(dot(n, lightHalfVec), 0.0);
+        float lightSpecular = pow(lightSpecAngle, effShininess) * effSpecular;
+
+        float atten = distFalloff * angleFalloff * light.intensity;
+        color += light.color * (base * lightDiffuse + vec3(lightSpecular)) * atten;
+    }
 
     if (mat.reflectivity > 0.0) {
         vec3 reflectDir = reflect(-toEye, n);

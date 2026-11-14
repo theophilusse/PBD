@@ -1,6 +1,7 @@
 package pbd.format;
 
 import org.joml.Vector3f;
+import pbd.net.FetchPolicy;
 import pbd.pz.PbdPaths;
 
 import java.io.IOException;
@@ -42,6 +43,20 @@ public final class PbdParser {
     private Path baseDir;           // null when parsing via parse(String) directly, or when the CURRENT file was fetched from a URL (see baseUrl)
     private String baseUrl;         // non-null only while parsing content that was itself fetched from a URL - nested relative pbd_ref sources resolve against THIS (as a URL), not baseDir
     private Deque<Path> includeStack; // shared across the whole recursive include chain, for cycle detection
+    private LoadBudget budget;        // shared across the whole recursive include chain: what the load may still fetch
+    private Path sandbox;             // non-null while parsing a file unpacked from a bundle: a reference may not leave this folder
+    private int depth;                // 0 for the file asked for, +1 for each pbd_ref it went through to get here
+    private java.util.Set<String> ids; // the instance ids of the scene being built (a hash lookup, not a search of the list per instance)
+
+    /** What one whole load of a scene (the file and everything it includes) may still do - one object shared by the whole chain. */
+    private static final class LoadBudget {
+        int fetchesLeft = FetchPolicy.MAX_FETCHES_PER_LOAD;
+
+        /** One more fetch, if the load may still make one. */
+        boolean takeFetch() {
+            return fetchesLeft-- > 0;
+        }
+    }
 
     public PbdParser(PrimitiveRegistry primitiveRegistry, ModifierRegistry modifierRegistry) {
         this.primitiveRegistry = primitiveRegistry;
@@ -52,11 +67,19 @@ public final class PbdParser {
         Path resolved = path.toAbsolutePath().normalize();
         Deque<Path> stack = new ArrayDeque<>();
         stack.push(resolved);
-        return parseInternal(Files.readString(path), resolved.getParent(), null, stack);
+        return parseInternal(readCapped(path), resolved.getParent(), null, stack, new LoadBudget(), null, 0, PbdLimits.MAX_INSTANCES);
+    }
+
+    /** The text of a file, unless it is longer than PbdLimits.MAX_TEXT_CHARS - read nothing of a file that large. */
+    private static String readCapped(Path path) throws IOException {
+        if (Files.size(path) > PbdLimits.MAX_TEXT_CHARS) {
+            throw new IOException("'" + path + "' is larger than " + (PbdLimits.MAX_TEXT_CHARS / (1024 * 1024)) + " MB - refused");
+        }
+        return Files.readString(path);
     }
 
     public PbdScene parse(String text) {
-        return parseInternal(text, null, null, new ArrayDeque<>());
+        return parseInternal(text, null, null, new ArrayDeque<>(), new LoadBudget(), null, 0, PbdLimits.MAX_INSTANCES);
     }
 
     /** Same as parse(String), but with a real baseDir for resolving a
@@ -70,44 +93,83 @@ public final class PbdParser {
      * just parse(String) with the one thing it couldn't have known
      * filled in. */
     public PbdScene parse(String text, Path baseDir) {
-        return parseInternal(text, baseDir, null, new ArrayDeque<>());
+        return parseInternal(text, baseDir, null, new ArrayDeque<>(), new LoadBudget(), null, 0, PbdLimits.MAX_INSTANCES);
     }
 
-    private PbdScene parseInternal(String text, Path baseDir, String baseUrl, Deque<Path> includeStack) {
+    /**
+     * Same as {@link #parse(String, Path)}, for a scene that is allowed {@code maxInstances} instances instead of
+     * {@link PbdLimits#MAX_INSTANCES}: the scene description format (see {@link SceneExpander}) raises the limit of the scene it
+     * writes when the file says so ({@code scene limit=...}), for a stress test of a hundred thousand lockers. Only this scene gets
+     * the larger limit: every file it includes is parsed under the usual one, so a file from anywhere cannot ask for more by
+     * including another.
+     */
+    public PbdScene parse(String text, Path baseDir, int maxInstances) {
+        return parseInternal(text, baseDir, null, new ArrayDeque<>(), new LoadBudget(), null, 0, maxInstances);
+    }
+
+    private PbdScene parseInternal(String text, Path baseDir, String baseUrl, Deque<Path> includeStack,
+                                   LoadBudget budget, Path sandbox, int depth, int maxInstances) {
         this.src = text;
         this.pos = 0;
         this.line = 1;
         this.baseDir = baseDir;
         this.baseUrl = baseUrl;
         this.includeStack = includeStack;
+        this.budget = budget;
+        this.sandbox = sandbox;
+        this.depth = depth;
+        this.ids = new java.util.HashSet<>();
+
+        if (text.length() > PbdLimits.MAX_TEXT_CHARS) {
+            throw error("the text is longer than " + PbdLimits.MAX_TEXT_CHARS + " characters - refused");
+        }
 
         PbdScene scene = new PbdScene();
+        scene.setMaxInstances(maxInstances);
 
         skipWhitespaceAndComments();
         while (!atEnd()) {
-            String keyword = readIdentifier();
-            switch (keyword) {
-                case "pbd_version" -> readRawValue(); // value ignored for now, just consumed
-                case "name" -> { expect('='); scene.name = readMetadataValue(); }
-                case "kind" -> { expect('='); scene.kind = readMetadataValue(); }
-                case "author" -> { expect('='); scene.authors.add(readMetadataValue()); }
-                case "origin" -> { expect('='); scene.origin = readMetadataValue(); }
-                case "description" -> { expect('='); scene.description = readMetadataValue(); }
-                case "curve" -> scene.addCurve(parseCurve());
-                case "pbd_ref" -> parsePbdRef(scene);
-                case "include_material" -> parseIncludeMaterial(scene);
-                default -> {
-                    if (!primitiveRegistry.isKnown(keyword)) {
-                        throw error("Unknown primitive type or keyword: '" + keyword + "'");
+            try {
+                String keyword = readIdentifier();
+                switch (keyword) {
+                    case "pbd_version" -> readRawValue(); // value ignored for now, just consumed
+                    case "name" -> { expect('='); scene.name = readMetadataValue(); }
+                    case "kind" -> { expect('='); scene.kind = readMetadataValue(); }
+                    case "author" -> { expect('='); scene.authors.add(readMetadataValue()); }
+                    case "origin" -> { expect('='); scene.origin = readMetadataValue(); }
+                    case "description" -> { expect('='); scene.description = readMetadataValue(); }
+                    case "curve" -> scene.addCurve(parseCurve());
+                    case "pbd_ref" -> parsePbdRef(scene);
+                    case "include_material" -> parseIncludeMaterial(scene);
+                    default -> {
+                        if (!primitiveRegistry.isKnown(keyword)) {
+                            throw error("Unknown primitive type or keyword: '" + keyword + "'");
+                        }
+                        addToScene(scene, parseInstance(keyword));
                     }
-                    scene.addInstance(parseInstance(keyword));
                 }
+            } catch (IllegalStateException parseError) {
+                throw parseError; // already says what is wrong, and on which line
+            } catch (RuntimeException malformed) {
+                // a number that is not one, a tuple with two numbers, a base64 value that is not base64...: a message with a line number,
+                // not a bare NumberFormatException / ArrayIndexOutOfBoundsException thrown at whoever opened the file
+                throw error(malformed.getClass().getSimpleName() + ": " + malformed.getMessage());
             }
             skipWhitespaceAndComments();
         }
 
         scene.resolveHierarchy();
         return scene;
+    }
+
+    /** Adds an instance to the scene being built: an id may be used once (a hash lookup), and the scene may hold so many instances and no more. */
+    private void addToScene(PbdScene scene, PbdInstance instance) {
+        if (!ids.add(instance.id)) throw error("Duplicate instance id: " + instance.id);
+        try {
+            scene.addVerified(instance);
+        } catch (IllegalStateException tooMany) {
+            throw error(tooMany.getMessage());
+        }
     }
 
     // ---- blocks -----------------------------------------------------------
@@ -262,7 +324,7 @@ public final class PbdParser {
             expect('=');
             String rawValue = readRawValue();
             switch (key) {
-                case "time" -> time = Float.parseFloat(rawValue);
+                case "time" -> time = finite(rawValue, rawValue);
                 case "pos" -> pos = parseVec3(rawValue);
                 case "rot" -> rotDeg = parseVec3(rawValue); // degrees, same convention as an instance's own rot=
                 case "scale" -> scale = parseVec3(rawValue);
@@ -479,6 +541,10 @@ public final class PbdParser {
         expect('}');
 
         if (source == null) throw error("pbd_ref '" + refId + "' is missing source=");
+        if (depth >= PbdLimits.MAX_INCLUDE_DEPTH) {
+            throw error("pbd_ref '" + refId + "' nests more than " + PbdLimits.MAX_INCLUDE_DEPTH
+                + " levels deep (a file that includes a file that includes a file...) - refused");
+        }
 
         // Three ways source= can resolve, checked in this order:
         //   1. source= is itself a full URL -> fetch it directly.
@@ -496,11 +562,14 @@ public final class PbdParser {
         if (isRemote) {
             resolvedUrl = source;
         } else if (baseUrl != null) {
-            resolvedUrl = java.net.URI.create(baseUrl).resolve(source).toString();
+            resolvedUrl = resolveUrl(baseUrl, source, "pbd_ref '" + refId + "' source");
             isRemote = true;
         }
 
         if (isRemote) {
+            if (!budget.takeFetch()) {
+                throw error("this scene names more than " + FetchPolicy.MAX_FETCHES_PER_LOAD + " files to fetch (the last: '" + resolvedUrl + "') - refused");
+            }
             try {
                 resolved = pbd.net.PbdFetcher.fetch(resolvedUrl, PbdPaths.REMOTE_CACHE_DIR, fallback, true);
             } catch (IOException e) {
@@ -514,7 +583,7 @@ public final class PbdParser {
                 throw error("pbd_ref '" + refId + "' needs a file on disk to resolve '" + source
                     + "' against - parse(String) has no base directory; use parseFile instead");
             }
-            resolved = baseDir.resolve(source).toAbsolutePath().normalize();
+            resolved = resolveLocal(source, "pbd_ref '" + refId + "' source");
         }
 
         // Cycle detection covers both local files and remote URLs alike -
@@ -539,7 +608,7 @@ public final class PbdParser {
         group.parentId = parentId;
         group.lod = lod;
         group.category = category;
-        scene.addInstance(group);
+        addToScene(scene, group);
 
         includeStack.push(resolved);
         PbdScene subScene;
@@ -559,6 +628,7 @@ public final class PbdParser {
             // of them.
             String lowerResolved = resolved.getFileName().toString().toLowerCase();
             Path subDir;
+            Path subSandbox = isRemote ? null : sandbox; // a file of a bundle includes only files of that bundle
             if (lowerResolved.endsWith(".pbdbin")) {
                 try {
                     subText = pbd.format.PbdBinFormat.decompressToText(resolved);
@@ -573,7 +643,7 @@ public final class PbdParser {
                     if (unpacked.scenePbd == null) {
                         throw error("pbd_ref '" + refId + "': '" + resolved + "' has no scene.pbd entry - not a valid .pbdasset");
                     }
-                    subText = Files.readString(unpacked.scenePbd);
+                    subText = readCapped(unpacked.scenePbd);
                     // The EXTRACTED bundle's own directory, not
                     // resolved's original one - a .pbdasset's whole
                     // point is bundling its materials/textures alongside
@@ -582,12 +652,13 @@ public final class PbdParser {
                     // resolve against where THOSE landed, not wherever
                     // the .pbdasset file itself happened to be sitting.
                     subDir = tempDir;
+                    subSandbox = tempDir.toAbsolutePath().normalize();
                 } catch (IOException e) {
                     throw error("pbd_ref '" + refId + "' could not read '" + resolved + "' as .pbdasset: " + e.getMessage());
                 }
             } else {
                 try {
-                    subText = Files.readString(resolved);
+                    subText = readCapped(resolved);
                 } catch (IOException e) {
                     throw error("pbd_ref '" + refId + "' could not read '" + resolved + "': " + e.getMessage());
                 }
@@ -600,7 +671,7 @@ public final class PbdParser {
             // against as if it were the content's real home).
             String subUrl = isRemote ? resolvedUrl : null;
             subScene = new PbdParser(primitiveRegistry, modifierRegistry)
-                .parseInternal(subText, subDir, subUrl, includeStack);
+                .parseInternal(subText, subDir, subUrl, includeStack, budget, subSandbox, depth + 1, PbdLimits.MAX_INSTANCES);
             // A .pbdasset's materials live in a temp folder that is gone
             // after this run - nothing a written file could point at.
             if (!lowerResolved.endsWith(".pbdasset")) carryIncludes(scene, subScene, subDir, subUrl);
@@ -629,7 +700,7 @@ public final class PbdParser {
             // opened every other copy of it in the scene).
             String linkGroup = copy.params.get("linkGroup");
             if (linkGroup != null) copy.params.put("linkGroup", prefix + linkGroup);
-            scene.addInstance(copy);
+            addToScene(scene, copy);
         }
         scene.curves.putAll(subScene.curves); // see the "known limitation" note above
         scene.materialOverrides.putAll(subScene.materialOverrides);
@@ -682,6 +753,7 @@ public final class PbdParser {
         String matUrl = null;
         if (isUrl(rawPath)) {
             matUrl = rawPath;
+            takeFetch(rawPath);
             try {
                 resolved = pbd.net.PbdFetcher.fetch(rawPath, PbdPaths.REMOTE_CACHE_DIR, null, true);
             } catch (IOException e) {
@@ -698,7 +770,8 @@ public final class PbdParser {
             // does - a remote scene can't have a LOCAL file sitting next
             // to it on disk, only a sibling resource at the same remote
             // location.
-            matUrl = java.net.URI.create(baseUrl).resolve(rawPath).toString();
+            matUrl = resolveUrl(baseUrl, rawPath, "include_material");
+            takeFetch(matUrl);
             try {
                 resolved = pbd.net.PbdFetcher.fetch(matUrl, PbdPaths.REMOTE_CACHE_DIR, null, true);
             } catch (IOException e) {
@@ -709,7 +782,7 @@ public final class PbdParser {
                 throw error("include_material needs a file on disk to resolve '" + rawPath
                     + "' against - parse(String) has no base directory; use parseFile instead");
             }
-            resolved = baseDir.resolve(rawPath).toAbsolutePath().normalize();
+            resolved = resolveLocal(rawPath, "include_material");
         }
         try {
             PbdMatParser matParser = new PbdMatParser();
@@ -737,7 +810,8 @@ public final class PbdParser {
                         // fetched content - is relative to THAT URL, not
                         // any local directory, and needs its own fetch,
                         // not a local Files.exists() check.
-                        String textureUrl = java.net.URI.create(matUrl).resolve(filename).toString();
+                        String textureUrl = resolveUrl(matUrl, filename, "include_material's " + key);
+                        takeFetch(textureUrl);
                         try {
                             Path texPath = pbd.net.PbdFetcher.fetch(textureUrl, PbdPaths.REMOTE_CACHE_DIR, null, true);
                             fields.put(key, texPath.toString());
@@ -757,6 +831,50 @@ public final class PbdParser {
         }
     }
 
+    /** One more fetch from the budget of this load, or a parse error naming the limit. */
+    private void takeFetch(String url) {
+        if (!budget.takeFetch()) {
+            throw error("this scene names more than " + FetchPolicy.MAX_FETCHES_PER_LOAD + " files to fetch (the last: '" + url + "') - refused");
+        }
+    }
+
+    /**
+     * {@code reference} read as an address relative to {@code base} (java.net.URI's rules), or a parse error that says which reference it was:
+     * a reference with a space, or one that is not an address at all, must not escape as an IllegalArgumentException. What the resulting
+     * address may be (https, a host the person approved) is the fetcher's to decide.
+     */
+    private String resolveUrl(String base, String reference, String what) {
+        try {
+            return java.net.URI.create(base).resolve(reference).toString();
+        } catch (IllegalArgumentException notAnAddress) {
+            throw error(what + " '" + reference + "' is not a valid address relative to '" + base + "'");
+        }
+    }
+
+    /**
+     * {@code reference} as a file next to the file being parsed. A reference that is not a file at all (a network path, another kind of
+     * address) is a parse error, and so is a path that cannot be read as one on this system. In a file unpacked from a bundle the
+     * reference must stay in that bundle's folder.
+     */
+    private Path resolveLocal(String reference, String what) {
+        String refusal = FetchPolicy.refuseLocalReference(reference);
+        if (refusal != null) throw error(what + " '" + abbreviate(reference) + "': " + refusal);
+        Path resolved;
+        try {
+            resolved = baseDir.resolve(reference).toAbsolutePath().normalize();
+        } catch (java.nio.file.InvalidPathException notAPath) {
+            throw error(what + " '" + abbreviate(reference) + "' is not a valid file name here");
+        }
+        if (sandbox != null && !resolved.startsWith(sandbox)) {
+            throw error(what + " '" + abbreviate(reference) + "' leaves the bundle it is part of - refused");
+        }
+        return resolved;
+    }
+
+    private static String abbreviate(String text) {
+        return text.length() <= 120 ? text : text.substring(0, 120) + "...";
+    }
+
     /**
      * A material's `texture=` value is just a bare filename - resolved
      * here, once, at parse time (rather than left for PbdRenderer to
@@ -770,7 +888,22 @@ public final class PbdParser {
      * clear "not found" and degrade gracefully rather than crashing.
      */
     private Path resolveTexturePath(String filename, Path pbdmatDir) {
-        Path nextToMatFile = pbdmatDir.resolve(filename).toAbsolutePath().normalize();
+        // a texture name is written by whoever wrote the material: a network path (\\\\host\\share, which Windows answers by
+        // offering the person's credentials) must not even be looked at, and a name that is no file here is a texture that is missing
+        String refusal = FetchPolicy.refuseLocalReference(filename);
+        Path nextToMatFile;
+        try {
+            if (refusal != null) throw new java.nio.file.InvalidPathException(filename, refusal);
+            nextToMatFile = pbdmatDir.resolve(filename).toAbsolutePath().normalize();
+        } catch (java.nio.file.InvalidPathException refused) {
+            System.err.println("[PbdParser] Texture '" + abbreviate(filename) + "' refused (" + (refusal != null ? refusal : "not a file name here")
+                + ") - the material keeps no texture");
+            return pbdmatDir.resolve("texture-name-refused");
+        }
+        if (sandbox != null && !nextToMatFile.startsWith(sandbox)) {
+            System.err.println("[PbdParser] Texture '" + abbreviate(filename) + "' leaves the bundle it is part of - refused");
+            return pbdmatDir.resolve("texture-name-refused");
+        }
         if (Files.exists(nextToMatFile)) return nextToMatFile;
 
         Path sharedTextures = pbd.pz.PbdPaths.TEXTURES_DIR.resolve(filename).toAbsolutePath().normalize();
@@ -865,13 +998,23 @@ public final class PbdParser {
         if (inner.startsWith("(")) inner = inner.substring(1, inner.length() - 1);
         String[] parts = inner.split(",");
         if (parts.length == 1) {
-            float v = Float.parseFloat(parts[0].trim());
+            float v = finite(parts[0], raw);
             return new Vector3f(v, v, v); // a single number means uniform across all 3 axes
         }
-        return new Vector3f(
-            Float.parseFloat(parts[0].trim()),
-            Float.parseFloat(parts[1].trim()),
-            Float.parseFloat(parts[2].trim()));
+        if (parts.length < 3) throw error("a vector is one number or three, got '" + abbreviate(raw) + "'");
+        return new Vector3f(finite(parts[0], raw), finite(parts[1], raw), finite(parts[2], raw));
+    }
+
+    /** One number of a vector: a finite float, or a parse error (NaN and infinity make every transform that uses them NaN). */
+    private float finite(String text, String whole) {
+        float v;
+        try {
+            v = Float.parseFloat(text.trim());
+        } catch (NumberFormatException e) {
+            throw error("'" + abbreviate(text.trim()) + "' is not a number (in '" + abbreviate(whole) + "')");
+        }
+        if (Float.isNaN(v) || Float.isInfinite(v)) throw error("'" + text.trim() + "' is not a finite number (in '" + abbreviate(whole) + "')");
+        return v;
     }
 
     private List<Vector3f> parseVec3List(String raw) {
@@ -890,7 +1033,10 @@ public final class PbdParser {
     // ---- low-level cursor / lexing -----------------------------------------
 
     private boolean atEnd() { return pos >= src.length(); }
-    private char peek() { return src.charAt(pos); }
+    private char peek() {
+        if (pos >= src.length()) throw error("Unexpected end of file");
+        return src.charAt(pos);
+    }
 
     private void skipWhitespaceAndComments() {
         while (!atEnd()) {

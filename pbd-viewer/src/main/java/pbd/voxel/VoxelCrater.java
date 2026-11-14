@@ -256,14 +256,27 @@ public final class VoxelCrater {
         return new Shape(impactX, impactY, impactZ, radiusVoxels, shotX, shotY, shotZ);
     }
 
-    /** What carve() produces. surviving shares unchanged entries with the input (entries are never mutated). */
+    /**
+     * What carve() produces. surviving shares unchanged entries with the input (entries are never mutated).
+     * {@code removed} is the other half of the input: the octree-aligned cubes the crater took (a cube taken whole is one
+     * entry, however big), so that surviving and removed together tile the input exactly - the volume the debris particles
+     * of a hit are thrown up from.
+     */
     public static final class Result {
         public final List<int[]> surviving;
         public final long removedVoxels;
-        Result(List<int[]> surviving, long removedVoxels) {
+        public final List<int[]> removed;
+        Result(List<int[]> surviving, long removedVoxels, List<int[]> removed) {
             this.surviving = surviving;
             this.removedVoxels = removedVoxels;
+            this.removed = removed;
         }
+    }
+
+    /** Which unit cells a carve takes out (the crater's solid, or the thin connections VoxelFracture breaks). */
+    @FunctionalInterface
+    interface CellTest {
+        boolean test(int x, int y, int z);
     }
 
     /**
@@ -274,9 +287,19 @@ public final class VoxelCrater {
      * nothing proportional to the rest of it.
      */
     public static Result carve(Shape shape, List<int[]> entries) {
-        if (entries.isEmpty()) return new Result(new ArrayList<>(), 0);
+        return carveCells(shape::contains, shape.boxMinX, shape.boxMinY, shape.boxMinZ, shape.boxMaxX, shape.boxMaxY, shape.boxMaxZ, entries);
+    }
 
-        // Bounding box of the cubes, to clip the crater's own box to
+    /**
+     * Takes the unit cells for which {@code test} holds - all of them lie inside the box [box0, box1) - out of octree-aligned
+     * cubes. The crater is one such set; the thin connections that VoxelFracture breaks are another, and the cube splitting is
+     * the same for both: a cube with none of its cells in the set is kept whole, a cube all of whose cells are in it is
+     * dropped whole, and only a cube the set cuts through is split into its eight children (down to unit voxels at most).
+     */
+    static Result carveCells(CellTest test, int boxMinX, int boxMinY, int boxMinZ, int boxMaxX, int boxMaxY, int boxMaxZ, List<int[]> entries) {
+        if (entries.isEmpty()) return new Result(new ArrayList<>(), 0, new ArrayList<>());
+
+        // Bounding box of the cubes, to clip the box of the cells to
         // (a crater is far bigger than a thin plank - no point
         // rasterizing the part of it that is open air).
         int ax0 = Integer.MAX_VALUE, ay0 = Integer.MAX_VALUE, az0 = Integer.MAX_VALUE;
@@ -286,49 +309,51 @@ public final class VoxelCrater {
             ax0 = Math.min(ax0, e[0]); ay0 = Math.min(ay0, e[1]); az0 = Math.min(az0, e[2]);
             ax1 = Math.max(ax1, e[0] + s); ay1 = Math.max(ay1, e[1] + s); az1 = Math.max(az1, e[2] + s);
         }
-        int x0 = Math.max(shape.boxMinX, ax0), y0 = Math.max(shape.boxMinY, ay0), z0 = Math.max(shape.boxMinZ, az0);
-        int x1 = Math.min(shape.boxMaxX, ax1), y1 = Math.min(shape.boxMaxY, ay1), z1 = Math.min(shape.boxMaxZ, az1);
+        int x0 = Math.max(boxMinX, ax0), y0 = Math.max(boxMinY, ay0), z0 = Math.max(boxMinZ, az0);
+        int x1 = Math.min(boxMaxX, ax1), y1 = Math.min(boxMaxY, ay1), z1 = Math.min(boxMaxZ, az1);
         if (x0 >= x1 || y0 >= y1 || z0 >= z1) {
-            return new Result(new ArrayList<>(entries), 0); // crater box does not touch the cubes at all
+            return new Result(new ArrayList<>(entries), 0, new ArrayList<>()); // the cells' box does not touch the cubes at all
         }
 
-        Mask mask = new Mask(shape, x0, y0, z0, x1, y1, z1);
+        Mask mask = new Mask(test, x0, y0, z0, x1, y1, z1);
         List<int[]> surviving = new ArrayList<>(entries.size() + 64);
+        List<int[]> removedCubes = new ArrayList<>();
         long[] removed = {0};
         for (int[] e : entries) {
             int s = e.length > 3 ? e[3] : 1;
             if (e[0] >= x1 || e[1] >= y1 || e[2] >= z1 || e[0] + s <= x0 || e[1] + s <= y0 || e[2] + s <= z0) {
-                surviving.add(e); // outside the (clipped) crater box
+                surviving.add(e); // outside the (clipped) box of the cells
             } else {
-                carveCell(mask, e[0], e[1], e[2], s, surviving, removed);
+                carveCell(mask, e[0], e[1], e[2], s, surviving, removedCubes, removed);
             }
         }
-        return new Result(surviving, removed[0]);
+        return new Result(surviving, removed[0], removedCubes);
     }
 
-    private static void carveCell(Mask mask, int x, int y, int z, int size, List<int[]> out, long[] removed) {
+    private static void carveCell(Mask mask, int x, int y, int z, int size, List<int[]> out, List<int[]> taken, long[] removed) {
         long count = mask.count(x, y, z, x + size, y + size, z + size);
         long total = (long) size * size * size;
         if (count == 0) {
             out.add(new int[]{x, y, z, size});
         } else if (count == total) {
             removed[0] += total;
+            taken.add(new int[]{x, y, z, size});
         } else {
             // size == 1 cannot reach here: a unit cell is either 0 or 1 of 1.
             int half = size / 2;
             for (int i = 0; i < 8; i++) {
                 carveCell(mask, x + ((i & 1) != 0 ? half : 0), y + ((i & 2) != 0 ? half : 0), z + ((i & 4) != 0 ? half : 0),
-                    half, out, removed);
+                    half, out, taken, removed);
             }
         }
     }
 
-    /** The crater rasterized over a clipped box, as a 3D prefix-sum table for O(1) cube counts. */
+    /** The cells rasterized over a clipped box, as a 3D prefix-sum table for O(1) cube counts. */
     private static final class Mask {
         final int x0, y0, z0, w, h, d;
         final int[] prefix; // (w+1)*(h+1)*(d+1)
 
-        Mask(Shape shape, int x0, int y0, int z0, int x1, int y1, int z1) {
+        Mask(CellTest test, int x0, int y0, int z0, int x1, int y1, int z1) {
             this.x0 = x0; this.y0 = y0; this.z0 = z0;
             this.w = x1 - x0; this.h = y1 - y0; this.d = z1 - z0;
             long cells = (long) (w + 1) * (h + 1) * (d + 1);
@@ -342,7 +367,7 @@ public final class VoxelCrater {
             for (int k = 0; k < d; k++) {
                 for (int j = 0; j < h; j++) {
                     for (int i = 0; i < w; i++) {
-                        int v = shape.contains(x0 + i, y0 + j, z0 + k) ? 1 : 0;
+                        int v = test.test(x0 + i, y0 + j, z0 + k) ? 1 : 0;
                         int a = at(i, j + 1, k + 1), b = at(i + 1, j, k + 1), c = at(i + 1, j + 1, k);
                         int ab = at(i, j, k + 1), ac = at(i, j + 1, k), bc = at(i + 1, j, k);
                         int abc = at(i, j, k);

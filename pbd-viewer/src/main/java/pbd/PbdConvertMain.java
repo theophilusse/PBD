@@ -9,16 +9,27 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Converts an already-exported .pbd file into .pbdbin or .pbdasset -
- * the command-line tool the Blender add-on's own "Export as .pbdbin" /
- * "Export as .pbdasset" buttons shell out to (see ui_panel.py), since
- * those formats are implemented in Java (PbdBinFormat/PbdAssetFormat),
- * not duplicated in Python.
+ * Converts an already-exported .pbd file into .pbdbin or .pbdasset - the
+ * command-line tool for scripts and batch work (PbdBinFormat/PbdAssetFormat).
+ * The Blender add-on no longer runs it: since v0.48.0 its .pbdbin / .pbdasset
+ * buttons write both formats themselves (compiled_export.py) and the engine's
+ * readers are what tools/regression/addon_compiled_check.py checks the files
+ * against - so no Java, no Gradle project and no particular folder are needed
+ * to export from Blender. (The add-on's "Add to tileGeometry.txt" button
+ * still runs PbdToTileGeometryMain.)
  *
  * Usage:
  *   PbdConvertMain bin <input.pbd> <output.pbdbin>
  *   PbdConvertMain asset <input.pbd> <output.pbdasset> [author] [version] [description]
  *   PbdConvertMain lever <input.pbd|.pbdbin|folder> <output.pbd|.pbdbin|folder>
+ *   PbdConvertMain expand <scene.pbdscene> <output.pbd>
+ *   PbdConvertMain check <scene.pbdscene>
+ *
+ * `expand` writes the plain PBD text a scene description file stands for (pbd.format.SceneExpander): one pbd_ref per placement, so
+ * what a row, a grid or a folder line really produces can be read, diffed, and opened by any tool that reads a .pbd. The paths in
+ * it are those of the scene file, so save it next to the scene file. `check` loads the scene file completely (every model it places,
+ * every id its show names), without a window, and says what it holds, how long the show lasts and how much memory the instances take
+ * - or what is wrong, with the line.
  *
  * `lever` is the keyframe-door migration (pbd.format.LeverArmMigration):
  * every keyframed door that is a plain two-pose swing becomes a lever arm
@@ -30,11 +41,17 @@ import java.util.Map;
 public final class PbdConvertMain {
 
     public static void main(String[] args) {
+        if (args.length == 2 && args[0].equals("check")) {
+            runCheck(Path.of(args[1]));
+            return;
+        }
         if (args.length < 3) {
             System.err.println("Usage:");
             System.err.println("  PbdConvertMain bin <input.pbd> <output.pbdbin>");
             System.err.println("  PbdConvertMain asset <input.pbd> <output.pbdasset> [author] [version] [description]");
             System.err.println("  PbdConvertMain lever <input.pbd|.pbdbin|folder> <output.pbd|.pbdbin|folder>   (keyframe doors -> lever arms)");
+            System.err.println("  PbdConvertMain expand <scene.pbdscene> <output.pbd>   (the PBD text a scene description file stands for)");
+            System.err.println("  PbdConvertMain check <scene.pbdscene>                 (load it completely, say what it holds or what is wrong)");
             System.exit(1);
         }
 
@@ -45,6 +62,19 @@ public final class PbdConvertMain {
         if (!Files.exists(input)) {
             System.err.println("Input file not found: " + input.toAbsolutePath());
             System.exit(1);
+        }
+
+        if (mode.equals("expand")) {
+            try {
+                pbd.format.SceneExpander.Expansion expansion = pbd.format.SceneExpander.expandFile(input);
+                Files.writeString(output, expansion.pbdText());
+                System.out.println("Wrote " + output.toAbsolutePath() + " - " + expansion.placements() + " placement(s), instance limit "
+                    + expansion.maxInstances() + ". The paths in it are relative to " + input.toAbsolutePath().getParent() + ": open it from there.");
+            } catch (IOException | IllegalStateException e) {
+                System.err.println("Error: " + e.getMessage());
+                System.exit(1);
+            }
+            return;
         }
 
         if (mode.equals("lever")) {
@@ -130,11 +160,49 @@ public final class PbdConvertMain {
                             : "bundled " + extraFiles.size() + " material/texture file(s): " + extraFiles.keySet()));
                 }
                 default -> {
-                    System.err.println("Unknown mode '" + mode + "' - expected 'bin', 'asset' or 'lever'");
+                    System.err.println("Unknown mode '" + mode + "' - expected 'bin', 'asset', 'lever', 'expand' or 'check'");
                     System.exit(1);
                 }
             }
         } catch (IOException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    /**
+     * The `check` mode: loads a scene description file the way the viewer does (without a window) and reports. Exit status 0 when it
+     * loads and its show can play, 1 with the reason otherwise.
+     */
+    private static void runCheck(Path file) {
+        if (!Files.exists(file)) {
+            System.err.println("Input file not found: " + file.toAbsolutePath());
+            System.exit(1);
+        }
+        try {
+            Runtime runtime = Runtime.getRuntime();
+            System.gc();
+            long before = runtime.totalMemory() - runtime.freeMemory();
+            PbdEngine.SceneHandle handle = new PbdEngine().loadAny(file);
+            System.gc();
+            long used = Math.max(0, runtime.totalMemory() - runtime.freeMemory() - before);
+            pbd.format.PbdScene scene = handle.raw();
+            System.out.println("OK: " + file.getFileName() + " holds " + scene.instances.size() + " instance(s) (it may hold up to " + scene.maxInstances() + ")");
+            if (!scene.instances.isEmpty()) {
+                System.out.println("    memory: about " + (used / (1024 * 1024)) + " MB for the instances, about " + (used / scene.instances.size()) + " bytes each");
+            }
+            pbd.format.ShowScript show = handle.show();
+            if (show == null) {
+                System.out.println("    no show: the camera is yours");
+            } else {
+                System.out.println("    show: " + String.format(java.util.Locale.ROOT, "%.1f", show.duration()) + " s, " + show.camera.size() + " camera key(s), "
+                    + show.events.size() + " event(s), " + show.hour.size() + " hour key(s), " + show.day.size() + " day key(s); overlay "
+                    + (show.overlay ? "on" : "off") + ", vsync " + (show.vsync ? "on" : "off")
+                    + (show.report != null ? ", report " + show.report : ", no report file"));
+                boolean ends = show.events.stream().anyMatch(e -> e.kind() == pbd.format.ShowScript.Kind.QUIT);
+                if (!ends) System.out.println("    note: no 'at <time> quit' - the show holds its last pose until the window is closed");
+            }
+        } catch (IOException | RuntimeException e) {
             System.err.println("Error: " + e.getMessage());
             System.exit(1);
         }

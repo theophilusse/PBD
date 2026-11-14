@@ -98,21 +98,12 @@ public final class Main {
     // behind PbdRenderer's own facade (destroyAt/drawDestroyed/
     // clearDestroyed/hasDestroyed) - moved there from here, along with
     // DestroyedPlacement, applyCraterAdaptive, computeCraterRemovedSet,
-    // buildVoxelColorFn and this file's own copy of
+    // the voxel colouring (now buildVoxelFaceColor) and this file's own copy of
     // extractRotationRobust (PbdRenderer already had one).
     private static float hideTransitionT = 1f; // 0=just started, 1=transition complete (camera fully at rest at its current target)
     private static final float HIDE_TRANSITION_SECONDS = 0.6f;
     private static Vector3f hideStartPos, hideTargetPos;
     private static float hideStartYaw, hideTargetYaw, hideStartPitch, hideTargetPitch;
-    // Blender scale=(0.2,0.2,0.2) on a native cube, measured by hand
-    // against what actually feels big enough to crouch into - see the
-    // roadmap item this came from. That Blender scale exports to 0.4
-    // world units per axis (verified against the real export pipeline,
-    // not assumed - Blender's own obj.dimensions after that scale is
-    // 0.4, and 'cube' writes dimensions directly as scale=, no further
-    // factor applied), which is what this compares against directly
-    // since instanceWorldSize() already returns world-space extent.
-    private static final float MIN_HIDE_DIMENSION = 0.4f;
 
     private static final boolean[] keysDown = new boolean[GLFW_KEY_LAST + 1];
     private static final boolean[] keysJustPressed = new boolean[GLFW_KEY_LAST + 1];
@@ -209,6 +200,42 @@ public final class Main {
      * figure in. */
     public static boolean canHide(String containerInstanceName, float playerHitboxVolume) {
         return availableVolume(containerInstanceName) >= playerHitboxVolume;
+    }
+
+    /**
+     * For AI / modding code: whether someone hiding in the hiding place (container) named {@code hideoutId} cannot be seen from
+     * outside - the place has doors, EVERY one is fully closed (not swinging, not ajar) and UNALTERED: a door is the instance the
+     * place names together with everything hanging from it (the panel and the handle of a lever-arm group), and as soon as a G hit
+     * has turned any of those into voxels, or destroyed it, the door counts as open - a dent is enough. It reads the live state: a
+     * door opened by a drag, or hit by G, changes the answer at once. False when no scene is loaded, the id is unknown, or the
+     * place has no door (a linked instance with neither keyframes nor a lever arm cannot be opened and is not one).
+     * {@link #getHideoutState} says why.
+     */
+    public static boolean isHideoutConcealing(String hideoutId) {
+        PbdRenderer r = currentRenderer;
+        return pbd.pz.HidingRules.concealing(r == null ? null : r.assessHideout(hideoutId));
+    }
+
+    /**
+     * Everything {@link #isHideoutConcealing} is made of, for a HUD or a smarter AI: how many doors, whether their arms are all
+     * closed, whether a hit has altered any of them, the lowest integrity of the parts that were hit (the share of the face still
+     * in the way, 1 = whole) and the widest hole in metres - both are information, an altered door is open whatever they say -
+     * whether the place is shut (nobody can go in or out: every door is closed and unaltered) and a line saying why. Null when no
+     * scene is loaded or the id is unknown.
+     */
+    public static pbd.pz.HidingRules.Assessment getHideoutState(String hideoutId) {
+        PbdRenderer r = currentRenderer;
+        return r == null ? null : r.assessHideout(hideoutId);
+    }
+
+    /**
+     * Whether the player is hidden and cannot be seen: inside a hiding place (the move in is complete) whose doors conceal.
+     * Hiding in a place with its door open, or with its door altered by a hit (a hole, a dent, a handle shot off), is false: the
+     * player is in view from the front.
+     */
+    public static boolean isPlayerConcealed() {
+        PbdRenderer r = currentRenderer;
+        return pbd.pz.HidingRules.playerConcealed(hidingMetaIndex, hideTransitionT, r == null ? null : r.assessHideout(hidingMetaIndex));
     }
 
     /** The renderer of the scene being shown right now (null when no scene
@@ -364,7 +391,9 @@ public final class Main {
      * closed normally (Escape). */
     private static Path runPbdViewer(Path scenePath) throws Exception {
         pbd.PbdEngine engine = new pbd.PbdEngine();
+        long loadStarted = System.nanoTime();
         pbd.PbdEngine.SceneHandle sceneHandle = engine.loadAny(scenePath);
+        long loadNanos = System.nanoTime() - loadStarted;
         PbdScene scene = sceneHandle.raw();
         PrimitiveRegistry primitiveRegistry = engine.primitiveRegistry();
         ModifierRegistry modifierRegistry = engine.modifierRegistry();
@@ -391,7 +420,9 @@ public final class Main {
                  Path.of("src/main/resources/textures/night_sky.jpg"));
              TextRenderer text = new TextRenderer(Path.of("src/main/resources/shaders/text"))) {
 
+            long uploadStarted = System.nanoTime();
             renderer.upload(scene, primitiveRegistry, modifierRegistry, materialRegistry);
+            long uploadNanos = System.nanoTime() - uploadStarted;
             currentScene = scene; // see this field's own doc - availableVolume/canHide (the runtime facade) need somewhere to read "the scene right now" from
             currentRenderer = renderer; // likewise getArmValue/isArmLocked/setArmLocked (the lever-arm part of the facade)
             // Prints ONCE per scene load, unconditionally - the single
@@ -416,14 +447,15 @@ public final class Main {
             // frame").
             java.util.Set<String> soundsToPreload = new java.util.LinkedHashSet<>(scene.soundFiles());
             // Fixed SFX triggered directly by a key handler below (G's
-            // "doomshotgun.wav", E's "pickup.wav") aren't authored on any
-            // keyframe, so the loop above never finds them - left out
+            // GameSounds.SHOT, E's GameSounds.PICKUP = item-equip.mp3 and the default
+            // click of a light, GameSounds.LIGHT_SWITCH) aren't
+            // authored on any keyframe, so the loop above never finds them - left out
             // here, each would hit the exact same lazy-decode mistiming
             // ("not quite locked to the first frame", see
             // SoundPlayer.preload's own doc) on its first key press
-            // instead of its first keyframe crossing.
-            soundsToPreload.add("doomshotgun.wav");
-            soundsToPreload.add("pickup.wav");
+            // instead of its first keyframe crossing. (An .mp3 costs more to
+            // decode than a .wav - the preload matters more for it.)
+            for (String fixedSound : pbd.audio.GameSounds.FIXED) soundsToPreload.add(fixedSound);
             for (String soundFile : soundsToPreload) soundPlayer.preload(soundFile);
 
             // Generic named-channel system (see pbd.render.ChannelTracker)
@@ -547,9 +579,49 @@ public final class Main {
             float smoothedFps = 60f;
             float keyStateLogTimer = 0f;
 
+            // A scene description file (.pbdscene) may carry a show - a camera path, keys pressed at set times, doors, the sun: played by
+            // pbd.render.SceneDirector, which decides everything. All that is here is the host it acts through (the same flags the keyboard
+            // sets, the same renderer calls) and, below, the few lines that feed it the frame time and apply the camera it hands back.
+            pbd.format.ShowScript show = sceneHandle.show();
+            pbd.render.SceneDirector director = null;
+            pbd.render.FrameStats frameStats = null;
+            if (show != null) {
+                director = new pbd.render.SceneDirector(show, pbd.render.ShowTargets.centers(scene, renderer.resolveLiveTransforms(),
+                    show.instanceReferences().keySet()), hourOfDay, dayOfYear);
+                frameStats = new pbd.render.FrameStats(show.warmup);
+                showBenchmarkOverlay = show.overlay;
+                glfwSwapInterval(show.vsync ? 1 : 0);
+            }
+            pbd.render.SceneDirector.Host showHost = new pbd.render.SceneDirector.Host() {
+                @Override public void press(String key) { keysJustPressed[key.equals("E") ? GLFW_KEY_E : key.equals("G") ? GLFW_KEY_G : GLFW_KEY_H] = true; }
+                @Override public void click() { mouseClicked = true; }
+                @Override public void setOpen(String instanceId, boolean open) {
+                    if (!renderer.setOpen(instanceId, open)) System.out.println("[Show] '" + instanceId + "' cannot be " + (open ? "opened" : "closed") + " (nothing animated, or locked)");
+                }
+                @Override public void setTime(double hour, double day) { hourOfDay = hour; dayOfYear = day; }
+                @Override public void quit() { glfwSetWindowShouldClose(window.handle(), true); }
+            };
+            double lastFrameClock = glfwGetTime();
+
             while (!window.shouldClose()) {
                 float dt = input.beginFrame(window);
                 input.applyLookAndMove(camera, dt);
+                double frameClock = glfwGetTime();
+                if (frameStats != null) frameStats.add(frameClock - lastFrameClock); // the true frame time, not the clamped dt
+                lastFrameClock = frameClock;
+                if (director != null && director.isPlaying()) {
+                    director.userMoved(keysDown[GLFW_KEY_W] || keysDown[GLFW_KEY_A] || keysDown[GLFW_KEY_S] || keysDown[GLFW_KEY_D]
+                        || keysDown[GLFW_KEY_SPACE] || keysDown[GLFW_KEY_LEFT_SHIFT]);
+                    director.advance(dt, showHost);
+                    pbd.render.CameraPath.Pose pose = director.steer(
+                        new pbd.render.CameraPath.Pose(camera.position.x, camera.position.y, camera.position.z, camera.yaw, camera.pitch),
+                        hidingMetaIndex >= 0 || hideTransitionT < 1f, dt);
+                    if (pose != null) {
+                        camera.position.set((float) pose.x(), (float) pose.y(), (float) pose.z());
+                        camera.yaw = (float) pose.yaw();
+                        camera.pitch = (float) pose.pitch();
+                    }
+                }
 
                 // Raw keysDown state (NOT justPressed's own edge-detected
                 // "was it pressed THIS frame" logic) for E/G/H
@@ -866,49 +938,15 @@ public final class Main {
                     }
                 }
 
-                // E: remove the container item nearest the crosshair ray -
-                // same forward-from-camera ray as the door click, but a
-                // separate key since left-click is already the door
-                // open/close action. Marks whatever was resting above the
-                // removed item (in the SAME box) as falling.
+                // E: take the item of an open container the crosshair is on, or switch the light of the model it is on - the nearer
+                // of the two wins. Same forward-from-camera ray as the door click, a separate key since left-click is already the
+                // door open/close action. All of it - what is nearer, which lights belong to the model, which sound goes with
+                // which outcome - is decided in pbd.render.UseKey; this only hands over the ray and plays what comes back.
                 if (justPressed(GLFW_KEY_E)) {
-                    // Diagnostic print for the "how many containers are
-                    // even open right now" half of the question -
-                    // removeNearestToRay itself (see ContainerContents)
-                    // logs the per-item ray-test details once it's
-                    // actually called; this covers the OTHER way E could
-                    // find nothing - zero open containers to even check.
-                    System.out.println("[E-key] " + containerContents.open().size() + " open container group(s) to check"
-                        + (containerContents.open().isEmpty() ? " - nothing is open right now" : ""));
-                    for (var entry : containerContents.open().entrySet()) {
-                        pbd.pz.ContainerContents contents = entry.getValue();
-                        java.util.List<Vector3f> boxWorldCenters = new java.util.ArrayList<>();
-                        java.util.List<org.joml.Quaternionf> boxWorldRotations = new java.util.ArrayList<>();
-                        for (int idx : contents.metaIndices) {
-                            Vector3f center = renderer.instanceWorldCenter(idx);
-                            org.joml.Quaternionf rot = renderer.instanceWorldRotation(idx);
-                            boxWorldCenters.add(center);
-                            boxWorldRotations.add(rot);
-                            // The container's OWN transform, fresh every
-                            // press - if the box holding these items has
-                            // moved/rotated since the items were placed
-                            // (or if instanceWorldCenter/Rotation return
-                            // something clearly wrong - NaN, a position
-                            // nowhere near where this container visually
-                            // is), that would surface right here, BEFORE
-                            // ever reaching a single item's own distance
-                            // check inside removeNearestToRay.
-                            System.out.println("  [E-key] container instance #" + idx + " world center=" + center
-                                + " rotation(xyzw)=" + rot.x + "," + rot.y + "," + rot.z + "," + rot.w);
-                        }
-                        System.out.println("  [E-key] group has " + contents.items.size() + " item(s) placed in it");
-                        String removed = contents.removeNearestToRay(boxWorldCenters, boxWorldRotations, camera.position, camera.forward());
-                        if (removed != null) {
-                            System.out.println("[Container] Removed " + removed);
-                            soundPlayer.play("pickup.wav"); // same "wire it now, supply the asset later" pattern as G's doomshotgun.wav below - SoundPlayer logs a warning and no-ops if the file isn't there yet rather than crashing.
-                            break; // one item per press, from whichever open container's ray hit first
-                        }
-                    }
+                    var used = renderer.pressUse(containerContents.openContents(), camera.position, camera.forward());
+                    System.out.println(used.message());
+                    // item-equip.mp3 (decoded by pbd.audio.Mp3Decoder) / the click of the light; SoundPlayer logs a warning and no-ops if the file isn't there rather than crashing.
+                    for (String sound : used.sounds()) soundPlayer.play(sound);
                 }
 
                 // H: hide inside whichever metadata (container) bounding
@@ -919,22 +957,19 @@ public final class Main {
                 // transform and (going in) its linked doors' average
                 // position - not authored per-scene, since every
                 // qualifying container gets this for free.
+                //
+                // Whether the player may go in or out is not decided here:
+                // a hiding place whose door is closed lets nobody in or out
+                // (pbd.pz.HidingRules, read through the renderer), so the
+                // handler only acts on the verdict.
                 if (justPressed(GLFW_KEY_H)) {
-                    if (hidingMetaIndex < 0) {
-                        int target = renderer.findMetadataCubeAlongRay(camera.position, camera.forward());
-                        if (target < 0) {
-                            System.out.println("[Hide] Not aiming at a container");
-                        } else {
-                            Vector3f size = renderer.instanceWorldSize(target);
-                            if (size.x < MIN_HIDE_DIMENSION || size.y < MIN_HIDE_DIMENSION || size.z < MIN_HIDE_DIMENSION) {
-                                System.out.println("[Hide] Too small to hide in (" + String.format("%.2f x %.2f x %.2f", size.x, size.y, size.z)
-                                    + ", need at least " + MIN_HIDE_DIMENSION + " on every axis)");
-                            } else {
-                                startHiding(target, scene, renderer, camera);
-                            }
-                        }
-                    } else {
-                        startExitingHide(camera);
+                    int container = hidingMetaIndex >= 0 ? hidingMetaIndex : renderer.findMetadataCubeAlongRay(camera.position, camera.forward());
+                    var verdict = renderer.hideKeyVerdict(hidingMetaIndex >= 0, container);
+                    if (!verdict.message().isEmpty()) System.out.println(verdict.message());
+                    switch (verdict.action()) {
+                        case ENTER -> startHiding(container, scene, renderer, camera);
+                        case EXIT -> startExitingHide(camera);
+                        case NONE -> { }
                     }
                 }
                 updateHideTransition(camera, dt);
@@ -948,7 +983,8 @@ public final class Main {
                 if (justPressed(GLFW_KEY_G)) {
                     var destroyResult = renderer.destroyAt(camera.position, camera.forward());
                     System.out.println(destroyResult.message());
-                    if (destroyResult.hit()) soundPlayer.play("doomshotgun.wav");
+                    // the shot, then - when a piece broke away - the break sound of the MATERIAL (breakSound= in its .pbdmat)
+                    for (String sound : pbd.audio.GameSounds.forShot(destroyResult.hit(), destroyResult.breakSound())) soundPlayer.play(sound);
                 }
 
                 smoothedFps = smoothedFps * 0.9f + (dt > 0f ? 1f / dt : 0f) * 0.1f;
@@ -985,6 +1021,29 @@ public final class Main {
                 }
 
                 window.swapBuffers();
+            }
+            if (frameStats != null) {
+                java.util.Map<String, String> facts = new java.util.LinkedHashMap<>();
+                facts.put("scene", scenePath.getFileName().toString());
+                facts.put("renderer", glGetString(GL_RENDERER) + " (OpenGL " + glGetString(GL_VERSION) + ")");
+                facts.put("instances", String.valueOf(scene.instances.size()));
+                facts.put("patches", String.valueOf(renderer.patchCount()));
+                facts.put("triangles per frame", String.valueOf(renderer.lastTriangleCount));
+                facts.put("draw calls per frame", String.valueOf(renderer.lastDrawCallCount));
+                facts.put("GPU upload", formatBytes(renderer.totalUploadedBytes));
+                facts.put("load (read, expand, parse)", String.format(java.util.Locale.ROOT, "%.0f ms", loadNanos / 1e6));
+                facts.put("upload to the GPU", String.format(java.util.Locale.ROOT, "%.0f ms", uploadNanos / 1e6));
+                facts.put("java heap in use", formatBytes(Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()));
+                facts.put("vsync", show.vsync ? "on" : "off");
+                String reportText = pbd.render.FrameStats.report(frameStats.summary(), facts);
+                System.out.print(reportText);
+                if (show.report != null) {
+                    try {
+                        System.out.println("[Show] report written to " + pbd.render.StressReport.write(scenePath.toAbsolutePath().getParent(), show.report, reportText));
+                    } catch (IOException e) {
+                        System.out.println("[Show] report not written: " + e.getMessage());
+                    }
+                }
             }
         }
         // Resets the static, cross-window key state before returning to
@@ -1193,23 +1252,15 @@ public final class Main {
                     float[] c = parseColorTriple(matFields.get("color"));
                     if (c != null) meshRenderer.baseColor = c;
                 }
-                // uvScale/uvScaleU/uvScaleV: same precedence as the main
-                // tessellation pipeline's own reading of these fields
-                // (see PbdRenderer.uploadMaterials) - uvScale= alone sets
-                // both axes, uvScaleU=/uvScaleV= override independently.
-                float uScale = 1f, vScale = 1f;
-                if (matFields.get("uvScale") != null) {
-                    try { uScale = vScale = Float.parseFloat(matFields.get("uvScale")); } catch (NumberFormatException ignored) {}
-                }
-                if (matFields.get("uvScaleU") != null) {
-                    try { uScale = Float.parseFloat(matFields.get("uvScaleU")); } catch (NumberFormatException ignored) {}
-                }
-                if (matFields.get("uvScaleV") != null) {
-                    try { vScale = Float.parseFloat(matFields.get("uvScaleV")); } catch (NumberFormatException ignored) {}
-                }
-                meshRenderer.uvScale = new float[]{uScale, vScale};
+                // uvScale/uvScaleU/uvScaleV, negative = mirrored: the one reader the tessellation pipeline and the
+                // voxels of a shot object share (pbd.format.MaterialUv), so the three cannot disagree
+                java.util.List<String> uvProblems = new java.util.ArrayList<>();
+                pbd.format.MaterialUv.Scale uv = pbd.format.MaterialUv.of(matFields, uvProblems);
+                meshRenderer.uvScale = new float[]{uv.u(), uv.v()};
+                int uvTurns = pbd.format.MaterialUv.quarterTurns(matFields, uvProblems);
+                for (String problem : uvProblems) System.out.println("[Mesh] " + inst.material + ": " + problem);
                 if (matFields.get("texture") != null) {
-                    meshRenderer.setTexture(Path.of(matFields.get("texture")));
+                    meshRenderer.setTexture(Path.of(matFields.get("texture")), uvTurns);
                 }
             }
             return meshRenderer;

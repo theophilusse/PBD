@@ -24,8 +24,19 @@ public final class PbdModifier {
         return params.get(key);
     }
 
+    /**
+     * The parameter as a number, or {@code fallback} when it is missing, cannot be read as one ("ninety") or is not finite ("NaN",
+     * "Infinity", "1e99"): a file that is wrong about one modifier gets that modifier's default, it does not stop the frame with a
+     * NumberFormatException (the values stay raw text until somebody needs them, so this is the first place they are read).
+     */
     public float getFloat(String key, float fallback) {
         String v = params.get(key);
-        return v == null ? fallback : Float.parseFloat(v);
+        if (v == null) return fallback;
+        try {
+            float f = Float.parseFloat(v);
+            return Float.isFinite(f) ? f : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 }

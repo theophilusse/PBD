@@ -10,6 +10,7 @@ import pbd.format.PbdParser;
 import pbd.format.PbdScene;
 import pbd.format.PbdSerializer;
 import pbd.format.PrimitiveRegistry;
+import pbd.format.SceneExpander;
 import pbd.pz.PbdPaths;
 import pbd.pz.TileGeometryConverter;
 import pbd.pz.TileGeometryParser;
@@ -73,6 +74,9 @@ public final class PbdEngine {
      */
     public SceneHandle loadAny(Path path) throws IOException {
         String name = path.getFileName().toString().toLowerCase();
+        if (name.endsWith(SceneExpander.EXTENSION)) {
+            return loadSceneFile(path);
+        }
         if (name.endsWith(".pbdbin")) {
             return new SceneHandle(PbdBinFormat.read(path, primitiveRegistry, modifierRegistry));
         }
@@ -85,6 +89,35 @@ public final class PbdEngine {
             return load(unpacked.scenePbd);
         }
         return load(path); // .pbd, or anything else - load() itself will surface a clear parse error if it isn't actually PBD text
+    }
+
+    /**
+     * Loads a scene description file ({@code .pbdscene}): the placements it lists are expanded into the {@code pbd_ref} blocks of an
+     * ordinary scene, parsed with the instance limit the file asks for, and the show it describes (a camera path, keys, doors) is kept
+     * in {@link PbdScene#show}. A show that names an instance the scene does not have is refused here - at load, with every such name
+     * and its line - rather than half way through a take.
+     */
+    private SceneHandle loadSceneFile(Path path) throws IOException {
+        SceneExpander.Expansion expansion = SceneExpander.expandFile(path);
+        Path folder = path.toAbsolutePath().normalize().getParent();
+        PbdScene scene;
+        try {
+            scene = new PbdParser(primitiveRegistry, modifierRegistry).parse(expansion.pbdText(), folder, expansion.maxInstances());
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            // the line numbers of a parse error are those of the expanded text (or of the model file, when the message says so)
+            throw new IllegalStateException("'" + path.getFileName() + "' could not be loaded: " + e.getMessage()
+                + "  [the text the scene file expands to is written by: PbdConvertMain expand " + path.getFileName() + " <out.pbd>]", e);
+        }
+        scene.show = expansion.show();
+        if (scene.show != null) {
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            for (PbdInstance instance : scene.instances) ids.add(instance.id);
+            List<String> problems = scene.show.problems(ids::contains);
+            if (!problems.isEmpty()) {
+                throw new IllegalStateException("the show of '" + path.getFileName() + "' names things the scene does not have:\n  " + String.join("\n  ", problems));
+            }
+        }
+        return new SceneHandle(scene);
     }
 
     /** Loads a .pbd file. IOException for a missing/unreadable file;
@@ -136,6 +169,11 @@ public final class PbdEngine {
          * facade is always available, never a dead end. */
         public PbdScene raw() {
             return scene;
+        }
+
+        /** What plays on its own, when the scene was loaded from a scene description file (.pbdscene); null otherwise. */
+        public pbd.format.ShowScript show() {
+            return scene.show;
         }
 
         public List<String> instanceNames() {

@@ -62,6 +62,13 @@ public final class PbdScene {
     public final List<PbdInstance> instances = new ArrayList<>();
     public final Map<String, PbdCurve> curves = new LinkedHashMap<>();
 
+    /**
+     * What plays on its own in this scene - a camera path, keys pressed at set times, doors opened, the sun's clock - when the scene was
+     * read from a scene description file ({@code .pbdscene}, see {@link SceneExpander}); null for every other scene. It is not part of
+     * what a {@code .pbd} or a {@code .pbdbin} says, so the serializers leave it out.
+     */
+    public ShowScript show;
+
     // Raw field maps from every include_material'd .pbdmat file, keyed by
     // material name (e.g. "color" -> "(0.45, 0.28, 0.13)"). Kept as raw
     // strings rather than a resolved/typed material class so this stays
@@ -70,11 +77,41 @@ public final class PbdScene {
     // place it already resolves material names to GPU data.
     public final Map<String, Map<String, String>> materialOverrides = new LinkedHashMap<>();
 
+    /**
+     * The most instances this scene accepts: {@link PbdLimits#MAX_INSTANCES}, unless whoever builds the scene knows better and says
+     * so (the scene description format, for a stress test of a million boxes). A file that includes files that include files cannot
+     * make a small text expand into a scene no machine can hold: past the limit, adding an instance is refused with a message.
+     */
+    private int maxInstances = PbdLimits.MAX_INSTANCES;
+
+    /** The most instances this scene accepts (see above). It is a setting of whoever builds the scene, not part of what a file says. */
+    public int maxInstances() {
+        return maxInstances;
+    }
+
+    public void setMaxInstances(int limit) {
+        if (limit < 1) throw new IllegalArgumentException("a scene holds at least one instance, got a limit of " + limit);
+        this.maxInstances = limit;
+    }
+
     public void addInstance(PbdInstance instance) {
         for (PbdInstance existing : instances) {
             if (existing.id.equals(instance.id)) {
                 throw new IllegalArgumentException("Duplicate instance id: " + instance.id);
             }
+        }
+        addVerified(instance);
+    }
+
+    /**
+     * Adds an instance whose id the caller has already made sure is not in the scene (a parser with its own hash set of ids): the
+     * search of {@link #addInstance} reads every instance already there, which is what turns 100,000 instances into minutes. The size
+     * limit still applies.
+     */
+    public void addVerified(PbdInstance instance) {
+        if (instances.size() >= maxInstances) {
+            throw new IllegalStateException("A scene holds at most " + maxInstances
+                + " instances - refused (a file that includes files that include files can expand without limit)");
         }
         instances.add(instance);
     }
@@ -86,10 +123,13 @@ public final class PbdScene {
     /**
      * Every distinct sound file this scene can play on its own - the
      * `sound=` of each keyframe plus each lever arm's openSound and
-     * closeSound - in first-use order. What a viewer decodes up front
-     * (SoundPlayer.preload) so the first door that needs a sound does not
-     * stall a frame decoding it. Read live from the instances, so a scene
-     * loaded on the fly gets its own list with nothing cached in between.
+     * closeSound and each light's switchSound (the click of E), in first-use
+     * order, then the `breakSound` of each material (BreakProfile: what plays
+     * when a piece of a thing made of it comes away). What a viewer decodes up front (SoundPlayer.preload) so
+     * the first door or the first break that needs a sound does not stall a
+     * frame decoding it. Read live from the instances and the materials, so
+     * a scene loaded on the fly gets its own list with nothing cached in
+     * between.
      */
     public Set<String> soundFiles() {
         Set<String> files = new java.util.LinkedHashSet<>();
@@ -101,6 +141,14 @@ public final class PbdScene {
                 if (inst.leverArm.openSound != null) files.add(inst.leverArm.openSound);
                 if (inst.leverArm.closeSound != null) files.add(inst.leverArm.closeSound);
             }
+            if ("light".equals(inst.type)) { // the click of a light switched by hand (E): switchSound, see pbd.render.LightSwitch
+                String click = inst.params.get(PbdInstance.SWITCH_SOUND_KEY);
+                if (click != null && !click.isBlank()) files.add(click.trim());
+            }
+        }
+        for (Map<String, String> material : materialOverrides.values()) {
+            String breakSound = BreakProfile.breakSoundOf(material);
+            if (breakSound != null) files.add(breakSound);
         }
         return files;
     }

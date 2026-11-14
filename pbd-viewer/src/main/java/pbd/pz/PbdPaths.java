@@ -42,8 +42,10 @@ public final class PbdPaths {
     /** Where pbd_ref's URL-sourced fetches (PbdParser, via PbdFetcher) and
      * PbdFetcher-based PBD/PBDMAT/PBDBIN imports land, keyed by URL hash -
      * see PbdFetcher.cachePathFor. Separate from MATERIALS_DIR/SCENES_DIR
-     * since this holds fetched, not hand-authored, content. */
-    public static final Path REMOTE_CACHE_DIR = RESOURCES_ROOT.resolve("cache/remote");
+     * since this holds fetched, not hand-authored, content. {@code -Dpbd.remoteCache=<folder>}
+     * puts it elsewhere (the regression tests that fetch from a server of their own do, so
+     * that they leave nothing in a person's real cache). */
+    public static final Path REMOTE_CACHE_DIR = Path.of(System.getProperty("pbd.remoteCache", RESOURCES_ROOT.resolve("cache/remote").toString()));
     public static final Path SCENES_HANDMADE_DIR = SCENES_DIR.resolve("handmade");
     public static final Path SCENES_ZOMBOID_DIR = SCENES_HANDMADE_DIR.resolve("zomboid");
     public static final Path SHADERS_DIR = RESOURCES_ROOT.resolve("shaders");

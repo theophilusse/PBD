@@ -36,6 +36,9 @@ public final class PbdMatParser {
     public java.util.List<String> authors = new java.util.ArrayList<>();
 
     public Map<String, Map<String, String>> parseFile(Path path) throws IOException {
+        if (Files.size(path) > PbdLimits.MAX_TEXT_CHARS) {
+            throw new IOException("'" + path + "' is larger than " + (PbdLimits.MAX_TEXT_CHARS / (1024 * 1024)) + " MB - refused");
+        }
         return parse(Files.readString(path));
     }
 
@@ -78,7 +81,9 @@ public final class PbdMatParser {
         expect('{');
         Map<String, String> fields = new LinkedHashMap<>();
         skipWhitespaceAndComments();
-        while (peek() != '}') {
+        while (true) {
+            requireMore("'}'");
+            if (peek() == '}') break;
             String key = readIdentifier();
             expect('=');
             fields.put(key, readRawValue());
@@ -90,6 +95,7 @@ public final class PbdMatParser {
 
     private String readRawValue() {
         skipWhitespaceAndComments();
+        requireMore("a value");
         char c = peek();
         if (c == '"') {
             pos++;
@@ -117,6 +123,7 @@ public final class PbdMatParser {
      * correct for those. */
     private String readMetadataValue() {
         skipWhitespaceAndComments();
+        requireMore("a value");
         if (peek() == '"') return readRawValue();
         int start = pos;
         while (!atEnd() && peek() != '\n' && peek() != '#') pos++;
@@ -142,6 +149,11 @@ public final class PbdMatParser {
     }
 
     private boolean atEnd() { return pos >= src.length(); }
+
+    /** A file that ends where something must follow (a block never closed, a key with no value) is refused with a line number - not with an index error. */
+    private void requireMore(String expected) {
+        if (atEnd()) throw error("Expected " + expected + " (end of file)");
+    }
     private char peek() { return src.charAt(pos); }
 
     private void skipWhitespaceAndComments() {

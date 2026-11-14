@@ -3,6 +3,7 @@ package pbd.render;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import pbd.format.MaterialRegistry;
+import pbd.format.ModifierParams;
 import pbd.format.ModifierRegistry;
 import pbd.format.PbdInstance;
 import pbd.format.PbdModifier;
@@ -175,13 +176,7 @@ public final class PbdMeshCache implements AutoCloseable {
         // whichever material happens to be id 0 - see signatureFor's
         // comment on why the cache key had to change alongside this).
         instBuf.putInt(materialRegistry.idOf(inst.material != null ? inst.material : "default"));
-        float[] cubeSmooth = {0f, 0f, 0f};
-        if ("cube".equals(inst.type)) {
-            float base = Float.parseFloat(inst.params.getOrDefault("smooth", "0"));
-            cubeSmooth[0] = Float.parseFloat(inst.params.getOrDefault("smoothX", String.valueOf(base)));
-            cubeSmooth[1] = Float.parseFloat(inst.params.getOrDefault("smoothY", String.valueOf(base)));
-            cubeSmooth[2] = Float.parseFloat(inst.params.getOrDefault("smoothZ", String.valueOf(base)));
-        }
+        float[] cubeSmooth = "cube".equals(inst.type) ? pbd.format.PrimitiveParts.cubeSmoothness(inst) : new float[]{0f, 0f, 0f};
         instBuf.putFloat(cubeSmooth[0]).putFloat(cubeSmooth[1]).putFloat(cubeSmooth[2]).putFloat(0);
         instBuf.putFloat(0).putFloat(0).putFloat(0).putFloat(0);
         instBuf.flip();
@@ -220,23 +215,7 @@ public final class PbdMeshCache implements AutoCloseable {
             modBuf.putInt(modifierRegistry.idOf(mod.type));
             modBuf.putInt(0);
             modBuf.position(modBuf.position() + 8);
-            if ("taper".equals(mod.type)) {
-                modBuf.putFloat(mod.getFloat("bottomScale", 1f));
-                modBuf.putFloat(mod.getFloat("topScale", 1f));
-                modBuf.putFloat(0).putFloat(0);
-            } else if ("bend".equals(mod.type)) {
-                modBuf.putFloat(mod.getFloat("angle", 0f));
-                modBuf.putFloat(PbdRenderer.axisIndex(mod.get("axis")));
-                modBuf.putFloat(0).putFloat(0);
-            } else if ("shear".equals(mod.type)) {
-                modBuf.putFloat(mod.getFloat("factorX", 0f));
-                modBuf.putFloat(mod.getFloat("factorY", 0f));
-                modBuf.putFloat(mod.getFloat("factorZ", 0f));
-                modBuf.putFloat(0);
-            } else {
-                modBuf.putFloat(mod.getFloat("angle", 0f));
-                modBuf.putFloat(0).putFloat(0).putFloat(0);
-            }
+            for (float component : ModifierParams.vec4(mod)) modBuf.putFloat(component);   // the live renderer's buffer, from the same code
         }
         if (inst.modifiers.isEmpty()) {
             modBuf.putInt(0).putInt(0);
